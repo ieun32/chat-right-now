@@ -32,23 +32,62 @@ html, body {
 
 .hidden { display: none !important; }
 
-/* ---- HUD dock ---- */
+/* ---- Collapsed floating dock ---- */
 #hud {
   position: fixed;
-  left: 14px;
-  bottom: 12px;
+  left: 16px;
+  bottom: 16px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 10px;
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: rgba(20, 22, 32, 0.82);
+}
+
+/* The always-visible launcher button */
+.dock-fab {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(20, 22, 32, 0.9);
+  color: var(--accent);
+  font-size: 20px;
+  line-height: 44px;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+.dock-fab:hover { background: rgba(30, 34, 48, 0.95); }
+#hud.open .dock-fab { transform: rotate(60deg); background: var(--accent); color: #10121a; }
+
+/* The menu that expands upward from the button */
+.dock-menu {
+  width: 232px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(20, 22, 32, 0.92);
   color: var(--ink);
   font-size: 12px;
-  backdrop-filter: blur(6px);
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transform-origin: bottom left;
+  transition: opacity 0.16s ease, transform 0.16s ease;
 }
-#hud .tag {
+/* collapsed state */
+#hud:not(.open) .dock-menu {
+  opacity: 0;
+  transform: translateY(8px) scale(0.96);
+  pointer-events: none;
+  visibility: hidden;
+}
+#hud.open .dock-menu { opacity: 1; transform: none; }
+
+.dock-menu .menu-head { display: flex; align-items: center; gap: 8px; }
+.dock-menu .tag {
   font-weight: 700;
   letter-spacing: 0.5px;
   color: #10121a;
@@ -56,16 +95,52 @@ html, body {
   padding: 2px 8px;
   border-radius: 6px;
 }
-#hud .muted { color: #a9b0c5; }
-#hud .keys { opacity: 0.75; }
-#hud button {
-  border: 0;
-  background: transparent;
-  color: #a9b0c5;
+.dock-menu .muted { color: #a9b0c5; }
+.dock-menu .hint { opacity: 0.72; line-height: 1.5; }
+.dock-menu .size {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #cdd3e4;
+}
+.dock-menu .size input[type='range'] {
+  flex: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.dock-menu .size #hud-size-val { min-width: 34px; text-align: right; }
+#hud-hide {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #cdd3e4;
   cursor: pointer;
   font-size: 13px;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-radius: 9px;
 }
-#hud button:hover { color: var(--danger); }
+#hud-hide:hover { background: rgba(255, 255, 255, 0.14); }
+.menu-actions { display: flex; gap: 8px; }
+.menu-actions button {
+  flex: 1;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-radius: 9px;
+}
+#hud-leave {
+  border: 1px solid rgba(122, 208, 255, 0.4);
+  background: rgba(122, 208, 255, 0.12);
+  color: var(--accent-2);
+}
+#hud-leave:hover { background: var(--accent-2); color: #0c1620; }
+#hud-quit {
+  border: 1px solid rgba(255, 138, 138, 0.45);
+  background: rgba(255, 138, 138, 0.12);
+  color: #ffc0c0;
+}
+#hud-quit:hover { background: var(--danger); color: #1a0f0f; }
 
 /* ---- Chat bar ---- */
 #chatbar {
@@ -98,6 +173,7 @@ html, body {
   backdrop-filter: blur(3px);
 }
 .card {
+  position: relative;
   width: 360px;
   padding: 26px 26px 22px;
   border-radius: 18px;
@@ -105,6 +181,20 @@ html, body {
   color: var(--ink);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
+#join-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: #aab;
+  font-size: 14px;
+  cursor: pointer;
+}
+#join-close:hover { background: var(--danger); color: #1a0f0f; }
 .card h1 {
   margin: 0 0 4px;
   font-size: 26px;

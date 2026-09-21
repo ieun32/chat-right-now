@@ -77,6 +77,8 @@ ipcMain.on('overlay:focus', () => {
   if (win) win.focus();
 });
 
+ipcMain.on('overlay:hide', () => { if (win) win.hide(); });
+
 ipcMain.on('overlay:quit', () => app.quit());
 
 function summon() {
@@ -86,24 +88,38 @@ function summon() {
   win.webContents.send('overlay:toggle-control');
 }
 
+/** Quick hide/show — the app vanishes instantly and comes back on the hotkey. */
+function toggleHide() {
+  if (!win) return;
+  if (win.isVisible()) win.hide();
+  else summon();
+}
+
 function createTray() {
-  // A 1px transparent image is enough; the menu is what matters.
-  const image = nativeImage.createEmpty();
+  let image = nativeImage.createFromPath(path.join(__dirname, '../../assets/tray.png'));
+  if (image.isEmpty()) image = nativeImage.createEmpty();
   tray = new Tray(image);
   tray.setToolTip('ChatRightNow');
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: 'Focus overlay (Ctrl+Alt+C)', click: summon },
-      { type: 'separator' },
-      { label: 'Quit', click: () => app.quit() },
-    ]),
-  );
+  const menu = Menu.buildFromTemplate([
+    { label: 'Show / Hide (Ctrl+Alt+H)', click: toggleHide },
+    { label: 'Focus overlay (Ctrl+Alt+C)', click: summon },
+    { type: 'separator' },
+    { label: 'Quit ChatRightNow (Ctrl+Alt+Q)', click: () => app.quit() },
+  ]);
+  tray.setContextMenu(menu);
+  // Single click toggles visibility; double click focuses for keyboard control.
+  tray.on('click', toggleHide);
+  tray.on('double-click', summon);
 }
 
 app.whenReady().then(() => {
   createWindow();
   createTray();
   globalShortcut.register('CommandOrControl+Alt+C', summon);
+  // Quick hide/show toggle — works even while hidden, so it's the way back.
+  globalShortcut.register('CommandOrControl+Alt+H', toggleHide);
+  // A quit path that always works, regardless of click-through / focus state.
+  globalShortcut.register('CommandOrControl+Alt+Q', () => app.quit());
 });
 
 app.on('second-instance', summon);

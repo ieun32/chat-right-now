@@ -21,12 +21,24 @@
   "devDependencies": {
     "esbuild": "^0.24.0",
     "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
     "ws": "^8.18.0"
   },
   "build": {
     "appId": "com.chatrightnow.app",
     "productName": "ChatRightNow",
+    "directories": { "output": "release" },
     "files": ["src/main/**", "dist/**", "assets/**", "config.json"],
-    "win": { "target": "nsis" }
+    "win": {
+      "target": ["nsis"],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "ChatRightNow"
+    }
   }
 }

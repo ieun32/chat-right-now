@@ -10,7 +10,16 @@ import {
   WORLD, makeActor, applyMove, settle, velocityFor, posAt, isMoving,
   addBubble, pruneBubbles, clampX, clampY,
 } from '../shared/world.js';
-import { loadSprites, animals, drawActor, drawPreview } from './render.js';
+import { loadSprites, animals, drawActor, drawPreview, setViewScale, getViewScale } from './render.js';
+
+const SCALE_KEY = 'crn.viewScale';
+function loadSavedScale() {
+  try {
+    const v = parseFloat(localStorage.getItem(SCALE_KEY));
+    if (!Number.isNaN(v)) setViewScale(v);
+  } catch {}
+}
+function saveScale(v) { try { localStorage.setItem(SCALE_KEY, String(v)); } catch {} }
 
 const $ = (id) => document.getElementById(id);
 
@@ -24,6 +33,8 @@ const state = {
   selectedAnimal: 'cat',
   chatOpen: false,
   joined: false,
+  dragging: false,
+  menuOpen: false,
   keys: { left: false, right: false, up: false, down: false },
   lastDir: { dx: 0, dy: 0 },
   boxes: new Map(),   // id -> screen box (for cursor hit-testing)
@@ -34,8 +45,11 @@ const state = {
 (async function boot() {
   state.config = await fetch('./config.json').then((r) => r.json());
   await loadSprites();
+  loadSavedScale();
   buildAnimalPicker();
   wireJoinScreen();
+  wireSizeControl();
+  wireDock();
   // The join card must be clickable, so grab the mouse until we're in-world.
   setInteractive(true);
   window.overlay?.focus();
@@ -76,6 +90,65 @@ function wireJoinScreen() {
   $('room').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
   $('nick').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
   $('hud-quit').onclick = () => window.overlay?.quit();
+  $('join-close').onclick = () => window.overlay?.quit();
+  $('hud-leave').onclick = () => leaveRoom();
+  $('hud-hide').onclick = () => { setMenuOpen(false); window.overlay?.hide(); };
+}
+
+/** Disconnect from the mesh and return to the join modal so a new room can be picked. */
+let leaving = false;
+async function leaveRoom() {
+  if (!state.joined || leaving) return;
+  leaving = true;
+  const mesh = state.mesh;
+  state.mesh = null;
+  try { await mesh?.stop(); } catch (err) { console.error('[leave]', err); }
+
+  // Reset world + input back to a clean pre-join state.
+  state.world.clear();
+  state.local = null;
+  state.joined = false;
+  state.keys = { left: false, right: false, up: false, down: false };
+  state.lastDir = { dx: 0, dy: 0 };
+  state.boxes.clear();
+
+  // Close chat/menu, hide HUD, show the join card again.
+  state.chatOpen = false;
+  $('chatbar').classList.add('hidden');
+  $('chat-input').value = '';
+  setMenuOpen(false);
+  $('hud').classList.add('hidden');
+  $('join').classList.remove('hidden');
+  $('enter').disabled = false;
+  showJoinError('');
+
+  setInteractive(true);
+  window.overlay?.focus();
+  leaving = false;
+}
+
+function wireSizeControl() {
+  const slider = $('hud-size');
+  const label = $('hud-size-val');
+  const show = (v) => { label.textContent = `${v.toFixed(1)}×`; };
+  slider.value = String(getViewScale());
+  show(getViewScale());
+  slider.addEventListener('input', () => {
+    const v = parseFloat(slider.value);
+    setViewScale(v);
+    saveScale(v);
+    show(v);
+  });
+}
+
+function setMenuOpen(open) {
+  state.menuOpen = open;
+  $('hud').classList.toggle('open', open);
+  updateInteractive();
+}
+
+function wireDock() {
+  $('hud-toggle').addEventListener('click', () => setMenuOpen(!state.menuOpen));
 }
 
 function showJoinError(msg) {
@@ -169,9 +242,15 @@ const KEYMAP = {
   ArrowDown: 'down', s: 'down', S: 'down',
 };
 
+function typingInField(e) {
+  const t = e.target;
+  return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+}
+
 window.addEventListener('keydown', (e) => {
+  if (typingInField(e)) return; // never hijack keys meant for a text field
   if (e.key === 'Enter' && state.joined && !state.chatOpen) { e.preventDefault(); openChat(); return; }
-  if (state.chatOpen) return; // let the input field handle everything
+  if (!state.joined || state.chatOpen) return; // no movement before joining / while typing chat
   const dir = KEYMAP[e.key];
   if (dir) {
     e.preventDefault();
@@ -179,6 +258,7 @@ window.addEventListener('keydown', (e) => {
   }
 });
 window.addEventListener('keyup', (e) => {
+  if (typingInField(e)) return;
   const dir = KEYMAP[e.key];
   if (dir && state.keys[dir]) { state.keys[dir] = false; recomputeDirection(); }
 });
@@ -237,12 +317,18 @@ function setInteractive(v) {
   state.interactive = v;
   window.overlay?.setInteractive(v);
 }
-function pointInRect(x, y, r) { return r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h; }
+function pointInRect(x, y, r, m = 0) {
+  return r && x >= r.x - m && x <= r.x + r.width + m && y >= r.y - m && y <= r.y + r.height + m;
+}
 
 function cursorOverInteractive(x, y) {
-  if (!state.joined) return true; // join card is up
+  if (!state.joined) return true;   // join card is up
   if (state.chatOpen) return true;
-  if (pointInRect(x, y, $('hud').getBoundingClientRect())) return true;
+  if (state.dragging) return true;  // never drop the mouse mid-drag (sliders etc.)
+  // Generous margin so entering a control toggles us interactive a beat early
+  // and a little vertical wander while dragging doesn't fall through.
+  if (pointInRect(x, y, $('hud-toggle').getBoundingClientRect(), 14)) return true;
+  if (state.menuOpen && pointInRect(x, y, $('hud-menu').getBoundingClientRect(), 14)) return true;
   for (const box of state.boxes.values()) if (pointInRect(x, y, box)) return true;
   return false;
 }
@@ -253,6 +339,12 @@ document.addEventListener('mousemove', (e) => {
   lastCursor = { x: e.clientX, y: e.clientY };
   updateInteractive();
 });
+// Hold interactivity for the whole press→drag→release, regardless of where the
+// cursor wanders — this is what makes the size slider draggable.
+document.addEventListener('mousedown', () => {
+  if (state.interactive) state.dragging = true;
+});
+window.addEventListener('mouseup', () => { state.dragging = false; updateInteractive(); });
 
 // ---------------------------------------------------------------- render loop
 const canvas = $('stage');

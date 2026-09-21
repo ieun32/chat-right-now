@@ -12,3 +12,6 @@ config.json
 
 # JetBrains IDE project files
 .idea/
+
+# Test-bot bundle (build artifact)
+tools/bot/bot.bundle.js

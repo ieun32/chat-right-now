@@ -5,6 +5,13 @@
 import { WORLD, posAt, isMoving } from '../shared/world.js';
 
 let sheet = null; // { img, atlas }
+let viewScale = 1; // per-viewer size multiplier on top of WORLD.SPRITE_SCALE
+
+/** Local-only render size multiplier (does not affect other peers' screens). */
+export function setViewScale(v) {
+  viewScale = Math.max(0.4, Math.min(3, v || 1));
+}
+export function getViewScale() { return viewScale; }
 
 export async function loadSprites() {
   const atlas = await fetch('../assets/sprites.json').then((r) => r.json());
@@ -53,7 +60,7 @@ export function drawPreview(ctx, animal, scale = 2) {
 export function drawActor(ctx, actor, canvasW, canvasH, dpr, now) {
   const { img } = sheet;
   const f = frameFor(actor, now);
-  const scale = WORLD.SPRITE_SCALE;
+  const scale = WORLD.SPRITE_SCALE * viewScale;
   const drawW = f.w * scale;
   const drawH = f.h * scale;
 

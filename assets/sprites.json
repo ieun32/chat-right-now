@@ -1,0 +1,26 @@
+{
+  "frameW": 32,
+  "frameH": 32,
+  "cols": {
+    "idle": [
+      0,
+      1
+    ],
+    "walk": [
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  "animals": [
+    "cat",
+    "dog",
+    "rabbit",
+    "frog",
+    "fox",
+    "bird",
+    "bear",
+    "panda"
+  ]
+}

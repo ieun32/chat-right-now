@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; connect-src 'self' https: wss: ws:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+  <title>ChatRightNow</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Transparent full-screen stage the characters live on -->
+  <canvas id="stage"></canvas>
+
+  <!-- Persistent little dock: room code, online count, hints -->
+  <div id="hud" class="panel hidden">
+    <span id="hud-room" class="tag"></span>
+    <span id="hud-online" class="muted"></span>
+    <span class="muted keys">Enter 채팅 · 방향키/WASD 이동 · Ctrl+Alt+C 포커스</span>
+    <button id="hud-quit" title="종료">✕</button>
+  </div>
+
+  <!-- Chat input, revealed with Enter -->
+  <form id="chatbar" class="hidden" autocomplete="off">
+    <input id="chat-input" maxlength="200" placeholder="메시지 입력 후 Enter…" />
+  </form>
+
+  <!-- Join screen -->
+  <div id="join" class="overlay">
+    <div class="card">
+      <h1>Chat<span>Right</span>Now</h1>
+      <p class="muted">지금 온라인인 친구들과 바탕화면에서 실시간으로.</p>
+
+      <label>닉네임</label>
+      <input id="nick" maxlength="16" placeholder="guest" />
+
+      <label>캐릭터</label>
+      <div id="animals" class="animals"></div>
+
+      <label>방 코드</label>
+      <div class="room-row">
+        <input id="room" maxlength="24" placeholder="예: FROG-42" />
+        <button id="dice" type="button" title="랜덤 코드">🎲</button>
+      </div>
+
+      <button id="enter" class="primary">입장</button>
+      <p id="join-error" class="error"></p>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

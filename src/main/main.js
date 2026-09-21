@@ -19,7 +19,10 @@ let tray = null;
 
 // Force a single instance — a second launch just focuses the existing overlay.
 if (!app.requestSingleInstanceLock()) {
+  console.error('[main] another ChatRightNow instance holds the lock — exiting this one.');
   app.quit();
+} else {
+  console.error('[main] primary instance, pid', process.pid);
 }
 
 function createWindow() {
@@ -73,8 +76,38 @@ ipcMain.on('overlay:set-interactive', (_e, interactive) => {
   win.setIgnoreMouseEvents(!interactive, { forward: true });
 });
 
+// Click-through is driven by polling the GLOBAL cursor against hotspot rects the
+// renderer publishes. Polling in the main process works even when the overlay is
+// not the focused window, which is exactly the case we need: clicking a character
+// while another app is focused must still activate us. (The renderer's own
+// mouse-move listener can't see moves reliably while the window is click-through
+// and unfocused — hence this.)
+let hotspots = [{ x: 0, y: 0, w: 1e6, h: 1e6 }]; // fully interactive until told otherwise
+let ignoring = true; // MUST match createWindow's initial setIgnoreMouseEvents(true)
+let pollTimer = null;
+
+ipcMain.on('overlay:hotspots', (_e, rects) => {
+  hotspots = Array.isArray(rects) ? rects : [];
+});
+
+function pollCursor() {
+  if (!win || win.isDestroyed() || !win.isVisible()) return;
+  const p = screen.getCursorScreenPoint();
+  const b = win.getBounds();
+  const rx = p.x - b.x;
+  const ry = p.y - b.y;
+  const over = hotspots.some((r) => rx >= r.x && rx <= r.x + r.w && ry >= r.y && ry <= r.y + r.h);
+  const shouldIgnore = !over; // over a hotspot → catch the mouse; else click-through
+  if (shouldIgnore !== ignoring) {
+    ignoring = shouldIgnore;
+    win.setIgnoreMouseEvents(shouldIgnore, { forward: true });
+  }
+}
+
 ipcMain.on('overlay:focus', () => {
-  if (win) win.focus();
+  if (!win) return;
+  win.moveTop();
+  win.focus();
 });
 
 ipcMain.on('overlay:hide', () => { if (win) win.hide(); });
@@ -115,6 +148,7 @@ function createTray() {
 app.whenReady().then(() => {
   createWindow();
   createTray();
+  pollTimer = setInterval(pollCursor, 45);
   globalShortcut.register('CommandOrControl+Alt+C', summon);
   // Quick hide/show toggle — works even while hidden, so it's the way back.
   globalShortcut.register('CommandOrControl+Alt+H', toggleHide);
@@ -124,7 +158,10 @@ app.whenReady().then(() => {
 
 app.on('second-instance', summon);
 
-app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  if (pollTimer) clearInterval(pollTimer);
+});
 
 // Keep running when the overlay window is closed via IPC we don't expect on
 // Windows, but quit cleanly if all windows are gone.

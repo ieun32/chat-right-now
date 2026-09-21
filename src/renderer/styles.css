@@ -1,34 +1,67 @@
-/* Transparent overlay — the page background must never paint, or we'd cover the
-   real desktop with a solid rectangle. */
+/* ============================================================
+   Pixel / 8-bit UI theme.
+   Rules of the look: sharp corners (no border-radius), opaque
+   panels (no blur), thick blocky borders, and HARD offset shadows
+   (no blur) so everything reads like stacked pixels. Buttons
+   physically "press" down on :active.
+   ============================================================ */
+
+@font-face {
+  font-family: 'DOSMyungjo';
+  src: url('../assets/fonts/DOSMyungjo.ttf') format('truetype');
+  font-display: swap;
+}
+
 :root {
   --ink: #f4f1e8;
   --card: #1b1e2b;
   --card-2: #242838;
+  --line: #0a0b11;        /* near-black pixel border */
   --accent: #ffcf5c;
   --accent-2: #7ad0ff;
   --danger: #ff8a8a;
-  font-family: 'Segoe UI', system-ui, sans-serif;
+  --pixel-font: 'DOSMyungjo', 'Segoe UI', system-ui, sans-serif;
+  --shadow: 4px 4px 0 var(--line);
+  --shadow-sm: 3px 3px 0 var(--line);
+  font-family: var(--pixel-font);
 }
 
 * { box-sizing: border-box; }
+body, button, input {
+  font-family: var(--pixel-font);
+  word-break: keep-all;   /* never split a Korean word mid-syllable */
+}
+button { white-space: nowrap; }   /* keep labels like "방 나가기" on one line */
 
 html, body {
   margin: 0;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: transparent;
   cursor: default;
   user-select: none;
+  -webkit-font-smoothing: none;   /* keep glyph edges crisp */
+  font-smooth: never;
 }
+html { background: transparent; }
+/* A ~1% tint means the window has NO fully-transparent pixels. On Windows,
+   fully-transparent pixels of a transparent Electron window let clicks fall
+   through to the desktop even when we're NOT in click-through mode, which
+   stops characters/empty clicks from focusing the window. This faint fill is
+   effectively invisible but makes clicks land while interactive. Empty-space
+   pass-through still works — that's driven by setIgnoreMouseEvents at the OS
+   level, independent of pixel alpha. */
+body { background: rgba(0, 0, 0, 0.012); }
 
 #stage {
   position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
-  pointer-events: none; /* the OS-level click-through is the real gate; this is belt-and-braces */
+  pointer-events: none;
+  image-rendering: pixelated;
 }
+#stage:focus { outline: none; }
 
 .hidden { display: none !important; }
 
@@ -40,126 +73,108 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
+  gap: 12px;
 }
 
-/* The always-visible launcher button */
+/* Square pixel launcher button */
 .dock-fab {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 0;
-  background: rgba(20, 22, 32, 0.9);
-  color: var(--accent);
-  font-size: 20px;
-  line-height: 44px;
+  width: 46px;
+  height: 46px;
+  border: 3px solid var(--line);
+  background: var(--accent);
+  color: var(--line);
+  font-size: 22px;
+  line-height: 1;
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(6px);
-  transition: transform 0.18s ease, background 0.18s ease;
+  box-shadow: var(--shadow);
+  image-rendering: pixelated;
 }
-.dock-fab:hover { background: rgba(30, 34, 48, 0.95); }
-#hud.open .dock-fab { transform: rotate(60deg); background: var(--accent); color: #10121a; }
+.dock-fab:hover { filter: brightness(1.06); }
+.dock-fab:active { transform: translate(4px, 4px); box-shadow: none; }
+#hud.open .dock-fab { background: var(--accent-2); }
 
-/* The menu that expands upward from the button */
+/* The menu that pops up from the button */
 .dock-menu {
-  width: 232px;
+  width: 236px;
   padding: 14px;
-  border-radius: 14px;
-  background: rgba(20, 22, 32, 0.92);
+  border: 3px solid var(--line);
+  background: var(--card);
   color: var(--ink);
-  font-size: 12px;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
+  font-size: 13px;
+  box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
   gap: 12px;
-  transform-origin: bottom left;
-  transition: opacity 0.16s ease, transform 0.16s ease;
 }
-/* collapsed state */
-#hud:not(.open) .dock-menu {
-  opacity: 0;
-  transform: translateY(8px) scale(0.96);
-  pointer-events: none;
-  visibility: hidden;
-}
-#hud.open .dock-menu { opacity: 1; transform: none; }
+#hud:not(.open) .dock-menu { display: none; }
 
 .dock-menu .menu-head { display: flex; align-items: center; gap: 8px; }
 .dock-menu .tag {
   font-weight: 700;
   letter-spacing: 0.5px;
-  color: #10121a;
+  color: var(--line);
   background: var(--accent);
   padding: 2px 8px;
-  border-radius: 6px;
+  border: 2px solid var(--line);
 }
 .dock-menu .muted { color: #a9b0c5; }
-.dock-menu .hint { opacity: 0.72; line-height: 1.5; }
-.dock-menu .size {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #cdd3e4;
-}
+.dock-menu .hint { color: #8b93aa; line-height: 1.6; font-size: 12px; }
+.dock-menu .size { display: flex; align-items: center; gap: 8px; color: #cdd3e4; }
 .dock-menu .size input[type='range'] {
   flex: 1;
   accent-color: var(--accent);
   cursor: pointer;
 }
-.dock-menu .size #hud-size-val { min-width: 34px; text-align: right; }
+.dock-menu .size #hud-size-val { min-width: 38px; text-align: right; }
+
+/* ---- Buttons (shared blocky style) ---- */
+button.px,
+#hud-hide, #hud-leave, #hud-quit, #dice, #join-close, button.primary {
+  border: 3px solid var(--line);
+  cursor: pointer;
+  font-weight: 700;
+  box-shadow: var(--shadow-sm);
+  image-rendering: pixelated;
+}
+button.px:active,
+#hud-hide:active, #hud-leave:active, #hud-quit:active,
+#dice:active, #join-close:active, button.primary:active {
+  transform: translate(3px, 3px);
+  box-shadow: none;
+}
+
 #hud-hide {
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
+  background: #2c3145;
   color: #cdd3e4;
-  cursor: pointer;
   font-size: 13px;
-  font-weight: 600;
   padding: 8px 10px;
-  border-radius: 9px;
 }
-#hud-hide:hover { background: rgba(255, 255, 255, 0.14); }
-.menu-actions { display: flex; gap: 8px; }
-.menu-actions button {
-  flex: 1;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 8px 10px;
-  border-radius: 9px;
-}
-#hud-leave {
-  border: 1px solid rgba(122, 208, 255, 0.4);
-  background: rgba(122, 208, 255, 0.12);
-  color: var(--accent-2);
-}
-#hud-leave:hover { background: var(--accent-2); color: #0c1620; }
-#hud-quit {
-  border: 1px solid rgba(255, 138, 138, 0.45);
-  background: rgba(255, 138, 138, 0.12);
-  color: #ffc0c0;
-}
-#hud-quit:hover { background: var(--danger); color: #1a0f0f; }
+#hud-hide:hover { background: #363c54; }
+
+.menu-actions { display: flex; flex-direction: column; gap: 8px; }
+.menu-actions button { width: 100%; font-size: 13px; padding: 9px 10px; }
+#hud-leave { background: var(--accent-2); color: var(--line); }
+#hud-leave:hover { filter: brightness(1.06); }
+#hud-quit { background: var(--danger); color: var(--line); }
+#hud-quit:hover { filter: brightness(1.06); }
 
 /* ---- Chat bar ---- */
 #chatbar {
   position: fixed;
   left: 50%;
-  bottom: 54px;
+  bottom: 60px;
   transform: translateX(-50%);
 }
 #chat-input {
-  width: 460px;
-  max-width: 70vw;
+  width: 480px;
+  max-width: 72vw;
   padding: 12px 16px;
-  border-radius: 14px;
-  border: 2px solid var(--accent-2);
-  background: rgba(18, 20, 30, 0.92);
+  border: 3px solid var(--line);
+  background: var(--card);
   color: var(--ink);
-  font-size: 15px;
+  font-size: 16px;
   outline: none;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow);
 }
 
 /* ---- Join overlay ---- */
@@ -169,36 +184,35 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(8, 9, 14, 0.55);
-  backdrop-filter: blur(3px);
+  background: rgba(8, 9, 14, 0.72);
 }
 .card {
   position: relative;
   width: 360px;
-  padding: 26px 26px 22px;
-  border-radius: 18px;
-  background: linear-gradient(180deg, var(--card-2), var(--card));
+  padding: 26px;
+  border: 4px solid var(--line);
+  background: var(--card-2);
   color: var(--ink);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: 8px 8px 0 var(--line);
 }
 #join-close {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  border: 0;
-  background: rgba(255, 255, 255, 0.06);
-  color: #aab;
+  width: 30px;
+  height: 30px;
+  background: #2c3145;
+  color: #cdd3e4;
   font-size: 14px;
-  cursor: pointer;
+  padding: 0;
 }
-#join-close:hover { background: var(--danger); color: #1a0f0f; }
+#join-close:hover { background: var(--danger); color: var(--line); }
+
 .card h1 {
   margin: 0 0 4px;
-  font-size: 26px;
-  letter-spacing: -0.5px;
+  font-size: 30px;
+  letter-spacing: 0;
+  text-shadow: 3px 3px 0 var(--line);
 }
 .card h1 span { color: var(--accent); }
 .card .muted { color: #98a0b6; margin: 0 0 18px; font-size: 13px; }
@@ -207,30 +221,28 @@ html, body {
   font-size: 12px;
   color: #aab;
   margin: 14px 0 6px;
-  text-transform: uppercase;
   letter-spacing: 0.6px;
 }
 .card input {
   width: 100%;
   padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid #38405a;
+  border: 3px solid var(--line);
   background: #12141d;
   color: var(--ink);
-  font-size: 14px;
+  font-size: 15px;
   outline: none;
 }
 .card input:focus { border-color: var(--accent-2); }
 .room-row { display: flex; gap: 8px; }
 .room-row input { flex: 1; text-transform: uppercase; }
-.room-row button {
-  width: 44px;
-  border-radius: 10px;
-  border: 1px solid #38405a;
+#dice {
+  width: 48px;
   background: #12141d;
-  cursor: pointer;
+  color: var(--ink);
   font-size: 18px;
+  box-shadow: var(--shadow-sm);
 }
+
 .animals {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -241,28 +253,23 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  border: 2px solid transparent;
+  border: 3px solid var(--line);
   background: #12141d;
   cursor: pointer;
   image-rendering: pixelated;
 }
 .animals .slot:hover { background: #1a1d2a; }
-.animals .slot.sel { border-color: var(--accent); background: #232a1a; }
+.animals .slot.sel { border-color: var(--accent); background: #2a2c18; }
 .animals .slot canvas { image-rendering: pixelated; }
 
 button.primary {
   width: 100%;
   margin-top: 20px;
-  padding: 12px;
-  border: 0;
-  border-radius: 12px;
+  padding: 13px;
   background: var(--accent);
-  color: #10121a;
-  font-weight: 700;
-  font-size: 15px;
-  cursor: pointer;
+  color: var(--line);
+  font-size: 16px;
 }
-button.primary:hover { filter: brightness(1.05); }
-button.primary:disabled { opacity: 0.5; cursor: default; }
+button.primary:hover { filter: brightness(1.06); }
+button.primary:disabled { opacity: 0.5; cursor: default; box-shadow: var(--shadow-sm); transform: none; }
 .error { color: var(--danger); font-size: 12px; min-height: 16px; margin: 10px 0 0; }

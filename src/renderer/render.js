@@ -95,9 +95,9 @@ function drawNameTag(ctx, nick, cx, topY, dpr) {
   if (!nick) return;
   ctx.save();
   ctx.scale(dpr, dpr);
-  ctx.font = '600 11px Segoe UI, sans-serif';
+  ctx.font = '12px "DOSMyungjo", monospace';
   ctx.textAlign = 'center';
-  const w = ctx.measureText(nick).width + 10;
+  const w = ctx.measureText(nick).width + 12;
   const y = topY - 4;
   ctx.fillStyle = 'rgba(16,18,26,0.72)';
   roundRect(ctx, cx - w / 2, y - 13, w, 15, 5);
@@ -111,9 +111,9 @@ function drawBubbles(ctx, actor, cx, topY, dpr, now) {
   if (!actor.bubbles || !actor.bubbles.length) return;
   ctx.save();
   ctx.scale(dpr, dpr);
-  ctx.font = '13px Segoe UI, sans-serif';
+  ctx.font = '14px "DOSMyungjo", monospace';
   ctx.textAlign = 'center';
-  const maxW = 220;
+  const maxW = 240;
   let y = topY - 20; // stack upward above the name tag
   // newest at the bottom (closest to the head)
   const list = actor.bubbles.slice(-WORLD.MAX_BUBBLES);

@@ -7,6 +7,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('overlay', {
   /** Tell the main process whether the cursor is currently over interactive UI. */
   setInteractive: (interactive) => ipcRenderer.send('overlay:set-interactive', !!interactive),
+  /** Publish clickable hotspot rects (CSS px, window-relative); main polls the
+   *  global cursor against these to toggle click-through regardless of focus. */
+  setHotspots: (rects) => ipcRenderer.send('overlay:hotspots', rects),
   /** Ask the main process to give this window keyboard focus. */
   focus: () => ipcRenderer.send('overlay:focus'),
   /** Hide the overlay instantly (bring back with Ctrl+Alt+H or the tray). */

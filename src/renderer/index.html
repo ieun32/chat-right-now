@@ -3,13 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; connect-src 'self' https: wss: ws:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+        content="default-src 'self'; connect-src 'self' https: wss: ws:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self';" />
   <title>ChatRightNow</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- Transparent full-screen stage the characters live on -->
-  <canvas id="stage"></canvas>
+  <!-- Transparent full-screen stage the characters live on.
+       tabindex makes it focusable so keyboard control never gets stuck on a
+       hidden text input. -->
+  <canvas id="stage" tabindex="-1"></canvas>
 
   <!-- Collapsed floating dock: a single button that expands a settings menu upward -->
   <div id="hud" class="dock hidden">

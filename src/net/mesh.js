@@ -62,7 +62,7 @@ export class Mesh {
       nick: this.self.nick,
       animal: this.self.animal,
     });
-    this._status('waiting for peers…');
+    this._status('1명 접속 중');
   }
 
   _status(text) { this._emit(MESH_EVENT.STATUS, text); }
@@ -81,8 +81,7 @@ export class Mesh {
     for (const [peerId] of this.peers) {
       if (!seen.has(peerId)) this._dropPeer(peerId, 'left room');
     }
-    const online = [...this.peers.values()].filter((p) => p.dc && p.dc.readyState === 'open').length;
-    this._status(online ? `${online} online` : 'connecting…');
+    this._reconcileStatus();
   }
 
   _createPeer(peerId, meta, initiator) {
@@ -149,7 +148,10 @@ export class Mesh {
 
   _reconcileStatus() {
     const online = [...this.peers.values()].filter((p) => p.dc && p.dc.readyState === 'open').length;
-    this._status(online ? `${online} online` : 'connecting…');
+    // Count includes me: alone = 1명, one other connected = 2명.
+    if (online > 0) this._status(`${online + 1}명 접속 중`);
+    else if (this.peers.size > 0) this._status('연결 중…');   // someone joining, handshaking
+    else this._status('1명 접속 중');                          // just me — signaling is up
   }
 
   _rawSend(peer, obj) {

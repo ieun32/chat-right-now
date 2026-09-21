@@ -21,6 +21,20 @@ function loadSavedScale() {
 }
 function saveScale(v) { try { localStorage.setItem(SCALE_KEY, String(v)); } catch {} }
 
+// Make sure the bundled pixel font is ready before we draw canvas text with it
+// (the DOM can swap in via font-display, but <canvas> needs it explicitly loaded).
+async function ensureFont() {
+  try {
+    await Promise.race([
+      Promise.all([
+        document.fonts.load('12px "DOSMyungjo"'),
+        document.fonts.load('14px "DOSMyungjo"'),
+      ]),
+      new Promise((r) => setTimeout(r, 3000)),
+    ]);
+  } catch {}
+}
+
 const $ = (id) => document.getElementById(id);
 
 const state = {
@@ -45,13 +59,14 @@ const state = {
 (async function boot() {
   state.config = await fetch('./config.json').then((r) => r.json());
   await loadSprites();
+  await ensureFont();
   loadSavedScale();
   buildAnimalPicker();
   wireJoinScreen();
   wireSizeControl();
   wireDock();
   // The join card must be clickable, so grab the mouse until we're in-world.
-  setInteractive(true);
+  pushHotspots();
   window.overlay?.focus();
   requestAnimationFrame(loop);
 })().catch((err) => showJoinError(err.message || String(err)));
@@ -122,7 +137,7 @@ async function leaveRoom() {
   $('enter').disabled = false;
   showJoinError('');
 
-  setInteractive(true);
+  pushHotspots();
   window.overlay?.focus();
   leaving = false;
 }
@@ -144,7 +159,7 @@ function wireSizeControl() {
 function setMenuOpen(open) {
   state.menuOpen = open;
   $('hud').classList.toggle('open', open);
-  updateInteractive();
+  pushHotspots();
 }
 
 function wireDock() {
@@ -185,8 +200,12 @@ async function join() {
   $('join').classList.add('hidden');
   $('hud').classList.remove('hidden');
   $('hud-room').textContent = room;
+  // Move keyboard focus off the (now hidden) room input onto the canvas, or
+  // WASD would be swallowed as "typing in a field".
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   window.overlay?.focus();
-  updateInteractive();
+  $('stage').focus();
+  pushHotspots();
 }
 
 // ---------------------------------------------------------------- mesh wiring
@@ -269,7 +288,7 @@ window.addEventListener('blur', () => {
 });
 
 // The global hotkey (Ctrl+Alt+C) asks us to take focus for keyboard control.
-window.overlay?.onToggleControl(() => { setInteractive(true); window.overlay?.focus(); });
+window.overlay?.onToggleControl(() => { window.overlay?.focus(); $('stage').focus(); });
 
 // ---------------------------------------------------------------- chat
 function openChat() {
@@ -278,7 +297,7 @@ function openChat() {
   state.keys = { left: false, right: false, up: false, down: false };
   recomputeDirection();
   $('chatbar').classList.remove('hidden');
-  setInteractive(true);
+  pushHotspots();
   window.overlay?.focus();
   $('chat-input').focus();
 }
@@ -287,7 +306,8 @@ function closeChat() {
   $('chat-input').value = '';
   $('chatbar').classList.add('hidden');
   window.overlay?.focus();
-  updateInteractive();
+  $('stage').focus(); // hand keyboard control back to movement
+  pushHotspots();
 }
 $('chatbar').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -311,40 +331,44 @@ setInterval(() => {
   }
 }, WORLD.SYNC_INTERVAL_MS);
 
-// ---------------------------------------------------------------- interactive hit-test
-function setInteractive(v) {
-  if (state.interactive === v) return;
-  state.interactive = v;
-  window.overlay?.setInteractive(v);
+// ---------------------------------------------------------------- clickable hotspots
+// We hand the main process the rectangles that should catch the mouse; it polls
+// the global cursor against them (works even when we're not the focused window).
+function inflate(r, m) {
+  return { x: r.x - m, y: r.y - m, w: r.width + 2 * m, h: r.height + 2 * m };
 }
-function pointInRect(x, y, r, m = 0) {
-  return r && x >= r.x - m && x <= r.x + r.width + m && y >= r.y - m && y <= r.y + r.height + m;
+function computeHotspots() {
+  // Full-screen interactive while the join card is up, chat is open, or a drag
+  // is in progress (so the slider never slips out from under the cursor).
+  if (!state.joined || state.chatOpen || state.dragging) {
+    return [{ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }];
+  }
+  const rects = [inflate($('hud-toggle').getBoundingClientRect(), 12)];
+  if (state.menuOpen) rects.push(inflate($('hud-menu').getBoundingClientRect(), 12));
+  for (const box of state.boxes.values()) rects.push({ x: box.x, y: box.y, w: box.w, h: box.h });
+  return rects;
+}
+let lastHotspotJSON = '';
+function pushHotspots() {
+  const rects = computeHotspots().map((r) => ({
+    x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h),
+  }));
+  const j = JSON.stringify(rects);
+  if (j === lastHotspotJSON) return;
+  lastHotspotJSON = j;
+  window.overlay?.setHotspots(rects);
 }
 
-function cursorOverInteractive(x, y) {
-  if (!state.joined) return true;   // join card is up
-  if (state.chatOpen) return true;
-  if (state.dragging) return true;  // never drop the mouse mid-drag (sliders etc.)
-  // Generous margin so entering a control toggles us interactive a beat early
-  // and a little vertical wander while dragging doesn't fall through.
-  if (pointInRect(x, y, $('hud-toggle').getBoundingClientRect(), 14)) return true;
-  if (state.menuOpen && pointInRect(x, y, $('hud-menu').getBoundingClientRect(), 14)) return true;
-  for (const box of state.boxes.values()) if (pointInRect(x, y, box)) return true;
-  return false;
-}
-let lastCursor = { x: -1, y: -1 };
-function updateInteractive() { setInteractive(cursorOverInteractive(lastCursor.x, lastCursor.y)); }
-
-document.addEventListener('mousemove', (e) => {
-  lastCursor = { x: e.clientX, y: e.clientY };
-  updateInteractive();
+// A mousedown only reaches us when the cursor was over a hotspot (main let it
+// through), so claim keyboard focus here and hold interactivity for the drag.
+document.addEventListener('mousedown', (e) => {
+  state.dragging = true;
+  pushHotspots();
+  window.overlay?.focus();
+  const onControl = e.target && e.target.closest && e.target.closest('#hud, #chatbar, #join');
+  if (!onControl && state.joined && !state.chatOpen) $('stage').focus();
 });
-// Hold interactivity for the whole press→drag→release, regardless of where the
-// cursor wanders — this is what makes the size slider draggable.
-document.addEventListener('mousedown', () => {
-  if (state.interactive) state.dragging = true;
-});
-window.addEventListener('mouseup', () => { state.dragging = false; updateInteractive(); });
+window.addEventListener('mouseup', () => { state.dragging = false; pushHotspots(); });
 
 // ---------------------------------------------------------------- render loop
 const canvas = $('stage');
@@ -355,9 +379,10 @@ function resize() {
   canvas.width = Math.round(window.innerWidth * dpr);
   canvas.height = Math.round(window.innerHeight * dpr);
 }
-window.addEventListener('resize', resize);
+window.addEventListener('resize', () => { resize(); pushHotspots(); });
 resize();
 
+let lastHotspotPush = 0;
 function loop() {
   const now = Date.now();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -368,7 +393,9 @@ function loop() {
   for (const actor of actors) {
     pruneBubbles(actor, now);
     const box = drawActor(ctx, actor, canvas.width, canvas.height, dpr, now);
-    if (!actor.isLocal || true) state.boxes.set(actor.id, box);
+    state.boxes.set(actor.id, box);
   }
+  // Republish character hotspots as they move (throttled; deduped downstream).
+  if (now - lastHotspotPush > 80) { lastHotspotPush = now; pushHotspots(); }
   requestAnimationFrame(loop);
 }

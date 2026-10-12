@@ -4,14 +4,36 @@ release/
 *.log
 .DS_Store
 
-# Local machine config with real Supabase keys. Ship config.example.json instead.
+# Local service configuration. Commit config.example.json with placeholders only.
 config.json
 
-# IDE
-.idea/workspace.xml
+# Environment files (keep sanitized templates trackable)
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.sample
+
+# Local credentials and signing keys
+.npmrc
+.aws/
+.supabase/
+supabase/.temp/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_ed25519
 
 # JetBrains IDE project files
 .idea/
+.vscode/
+
+# Test output
+coverage/
 
 # Test-bot bundle (build artifact)
 tools/bot/bot.bundle.js

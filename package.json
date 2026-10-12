@@ -2,6 +2,7 @@
   "name": "chat-right-now",
   "version": "0.1.0",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE",
   "description": "Desktop pet mesh chat - pixel animals roaming your Windows desktop with real-time P2P chat",
   "main": "src/main/main.js",
   "scripts": {
@@ -28,7 +29,7 @@
     "appId": "com.chatrightnow.app",
     "productName": "ChatRightNow",
     "directories": { "output": "release" },
-    "files": ["src/main/**", "dist/**", "assets/**", "config.json"],
+    "files": ["src/main/**", "dist/**", "assets/**", "config.json", "LICENSE"],
     "win": {
       "target": ["nsis"],
       "icon": "assets/icon.png"

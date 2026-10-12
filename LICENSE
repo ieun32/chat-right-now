@@ -1,0 +1,64 @@
+ChatRightNow Personal Noncommercial and Contribution License 1.0
+
+Copyright (c) 2026 Eunyoung Lee and contributors.
+All rights reserved except as expressly granted below.
+
+1. Scope
+
+This license covers the original ChatRightNow code, documentation, and assets
+(the "Software"). Third-party components are excluded and remain governed by
+their respective licenses, including DOSMyungjo under assets/fonts/LICENSE.txt.
+This is a source-available license, not an open-source license.
+
+2. Permitted use
+
+You may view, download, build, run, and modify the Software for your own personal,
+noncommercial use, including installing and using official binary releases.
+You may also copy, build, run, test, and modify the Software
+to prepare and submit contributions to the upstream ChatRightNow project at
+https://github.com/ieun32/chat-right-now.
+
+You may publish source-code forks and patches solely to propose, discuss, or
+review contributions to that upstream project. Keep this license and all
+applicable copyright and third-party notices in those copies. Recipients receive
+only the permissions granted by this license. Nothing here restricts rights
+granted under GitHub's Terms of Service to view and fork a public repository.
+
+3. Restrictions
+
+Except for the contribution activities expressly permitted above, you may not
+use the Software for commercial or business purposes, including internal
+business operations, paid services, sale, licensing for a fee, advertising-
+supported offerings, or incorporation into a commercial product or service.
+
+You may not distribute the Software or modified versions as standalone releases,
+publish binaries or installers, or offer a hosted service to others without
+prior written permission from the applicable copyright holders. Source-code
+forks and patches for upstream contributions are permitted as stated above.
+
+Other uses require prior written permission from the applicable copyright
+holders. Rights provided by applicable law are not restricted by this license.
+
+4. Contributions
+
+By intentionally submitting a contribution for inclusion in the upstream
+project, you license your original contribution under these same terms and
+grant the upstream maintainers a nonexclusive, worldwide, royalty-free license
+to reproduce, modify, and distribute it as part of the upstream project in
+source and binary form under this license. This includes official releases for
+personal, noncommercial use. You retain ownership of your contribution.
+
+You must have the right to submit the contribution and must identify any
+third-party material and its license. Submission does not guarantee acceptance
+or grant repository write or merge access. This clause does not grant permission
+to commercially exploit or relicense someone else's contribution.
+
+5. No warranty; limitation of liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS PROVIDED
+"AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE
+AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

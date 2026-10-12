@@ -2,8 +2,11 @@
 // can execute them. Ad-hoc signing is NOT Developer ID signing or notarization.
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
+const { Arch } = require('builder-util');
 module.exports = async context => {
   if (context.electronPlatformName !== 'darwin') return;
+  // Signing either temporary input changes CodeResources and prevents merging.
+  if (context.arch !== Arch.universal) return;
   const appPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
   execFileSync('/usr/bin/codesign', [
     '--force', '--deep', '--sign', '-', '--preserve-metadata=entitlements', appPath,

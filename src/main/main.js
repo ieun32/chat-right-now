@@ -11,14 +11,19 @@
  * window — so we expose a global hotkey to summon/focus the overlay, and any
  * click on an interactive element focuses it naturally.
  */
-const { app, BrowserWindow, ipcMain, globalShortcut, screen, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, screen, Tray, Menu, nativeImage, shell } = require('electron');
 const path = require('node:path');
 const { autoUpdater } = require('electron-updater');
 const { createUpdates } = require('./updates');
 
 let win = null;
 let tray = null;
-const updates = createUpdates({ app, updater: autoUpdater, publish: state => {
+const isMac = process.platform === 'darwin';
+const shortcutLabel = isMac ? '⌘⌥' : 'Ctrl+Alt+';
+const updates = createUpdates({ app, updater: autoUpdater,
+  manualInstall: isMac,
+  openDownload: () => shell.openExternal('https://github.com/ieun32/chat-right-now/releases/latest'),
+  publish: state => {
   if (win && !win.isDestroyed()) win.webContents.send('updates:state', state);
 } });
 
@@ -39,7 +44,8 @@ if (!app.requestSingleInstanceLock()) {
 
 function createWindow() {
   const primary = screen.getPrimaryDisplay();
-  const { x, y, width, height } = primary.bounds;
+  // Leave the macOS menu bar and Dock accessible.
+  const { x, y, width, height } = isMac ? primary.workArea : primary.bounds;
 
   win = new BrowserWindow({
     x,
@@ -56,6 +62,7 @@ function createWindow() {
     fullscreenable: false,
     focusable: true,
     show: false,
+    ...(isMac ? { type: 'panel', acceptFirstMouse: true } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -147,23 +154,30 @@ function toggleHide() {
 function createTray() {
   let image = nativeImage.createFromPath(path.join(__dirname, '../../assets/tray.png'));
   if (image.isEmpty()) image = nativeImage.createEmpty();
+  if (isMac) image = image.resize({ width: 18, height: 18 });
   tray = new Tray(image);
   tray.setToolTip(`ChatRightNow v${app.getVersion()}`);
   const menu = Menu.buildFromTemplate([
     { label: `ChatRightNow v${app.getVersion()}`, enabled: false },
     { label: '업데이트 확인', click: () => { summon(); updates.check(); } },
-    { label: 'Show / Hide (Ctrl+Alt+V)', click: toggleHide },
-    { label: 'Focus overlay (Ctrl+Alt+C)', click: summon },
+    { label: `Show / Hide (${shortcutLabel}V)`, click: toggleHide },
+    { label: `Focus overlay (${shortcutLabel}C)`, click: summon },
     { type: 'separator' },
-    { label: 'Quit ChatRightNow (Ctrl+Alt+Q)', click: () => app.quit() },
+    { label: `Quit ChatRightNow (${shortcutLabel}Q)`, click: () => app.quit() },
   ]);
   tray.setContextMenu(menu);
   // Single click toggles visibility; double click focuses for keyboard control.
-  tray.on('click', toggleHide);
-  tray.on('double-click', summon);
+  // macOS single click opens the status menu; do not also hide the overlay.
+  if (!isMac) {
+    tray.on('click', toggleHide);
+    tray.on('double-click', summon);
+  }
 }
 
 app.whenReady().then(() => {
+  if (isMac) Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { role: 'appMenu' }, { role: 'editMenu' },
+  ]));
   createWindow();
   createTray();
   win.webContents.once('did-finish-load', () => updates.check());
@@ -176,6 +190,9 @@ app.whenReady().then(() => {
 });
 
 app.on('second-instance', summon);
+app.on('activate', () => {
+  if (win) summon();
+});
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();

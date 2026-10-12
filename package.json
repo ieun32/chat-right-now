@@ -1,9 +1,9 @@
 {
   "name": "chat-right-now",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
-  "description": "Desktop pet mesh chat - pixel animals roaming your Windows desktop with real-time P2P chat",
+  "description": "Desktop pet mesh chat - pixel animals roaming your Windows or macOS desktop with real-time P2P chat",
   "main": "src/main/main.js",
   "scripts": {
     "gen:sprites": "node tools/gen-sprites.mjs",
@@ -13,7 +13,8 @@
     "dev": "node tools/dev.mjs",
     "signal": "node tools/dev-signal-server.mjs",
     "dist": "node tools/build.mjs --release && electron-builder --win --publish never",
-    "test": "node --test tests/*.test.mjs tests/*.test.cjs"
+    "test": "node --test tests/*.test.mjs tests/*.test.cjs",
+    "dist:mac": "node tools/build.mjs --release && electron-builder --mac --universal --publish never"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
@@ -28,6 +29,7 @@
     "ws": "^8.18.0"
   },
   "build": {
+    "afterPack": "tools/adhoc-sign-mac.cjs",
     "appId": "com.chatrightnow.app",
     "productName": "ChatRightNow",
     "directories": {
@@ -42,7 +44,14 @@
       "assets/**",
       "LICENSE"
     ],
-    "publish": [{ "provider": "github", "owner": "ieun32", "repo": "chat-right-now", "releaseType": "release" }],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ieun32",
+        "repo": "chat-right-now",
+        "releaseType": "release"
+      }
+    ],
     "artifactName": "ChatRightNow-Setup-${version}-${arch}.${ext}",
     "win": {
       "target": [
@@ -56,6 +65,15 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "ChatRightNow"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.social-networking",
+      "artifactName": "ChatRightNow-${version}-mac-${arch}.${ext}",
+      "identity": null
     }
   }
 }

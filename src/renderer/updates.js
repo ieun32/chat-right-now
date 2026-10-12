@@ -10,10 +10,14 @@ export function wireUpdates() {
       downloading: `업데이트 다운로드 ${state.percent}%`, ready: `v${state.latestVersion} 설치 준비 완료`,
       installing: '앱을 재시작합니다…', error: state.message,
     };
+    if (state.manualInstall && state.status === 'available') {
+      messages.available += ' · Mac은 다운로드 후 직접 설치';
+    }
     document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = `v${state.version}`; });
     document.querySelectorAll('[data-update-status]').forEach(el => { el.textContent = messages[state.status] || ''; });
     document.querySelectorAll('[data-update-action]').forEach(el => {
       el.textContent = state.status === 'available' ? '새 버전 다운로드' : state.status === 'ready' ? '재시작하여 설치' : '업데이트 확인';
+      if (state.manualInstall && state.status === 'available') el.textContent = 'Mac 다운로드 페이지';
       el.disabled = ['development', 'checking', 'downloading', 'installing'].includes(state.status);
     });
   };

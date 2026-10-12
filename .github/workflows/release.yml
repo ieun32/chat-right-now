@@ -1,16 +1,27 @@
-name: Windows release
+name: Desktop release
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 concurrency:
-  group: windows-release
+  group: desktop-release
   cancel-in-progress: false
 jobs:
-  release:
-    runs-on: windows-latest
+  build:
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            command: npm run dist -- --x64
+          - os: macos-14
+            platform: macos
+            command: npm run dist:mac
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,25 +34,40 @@ jobs:
         run: |
           $version = node -p "require('./package.json').version"
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag and package version must match' }
+          if ($env:GITHUB_REF_TYPE -ne 'tag' -and $env:GITHUB_REF_NAME -ne 'main') { throw 'Manual releases must run from main' }
       - run: npm test
       - name: Build installer
-        run: npm run dist -- --x64
+        run: ${{ matrix.command }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-installer
+          name: release-${{ matrix.platform }}
+          if-no-files-found: error
           path: |
             release/*.exe
+            release/*.dmg
+            release/*.zip
             release/*.blockmap
-            release/latest.yml
-      - name: Publish GitHub release
-        shell: pwsh
+            release/latest*.yml
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release
+      - name: Publish both platforms together
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $version = node -p "require('./package.json').version"
-          $assets = Get-ChildItem release -File | Where-Object { $_.Name -match '\.(exe|blockmap)$' -or $_.Name -eq 'latest.yml' } | ForEach-Object { $_.FullName }
-          gh release create "v$version" @assets --target $env:GITHUB_SHA --title "ChatRightNow v$version" --generate-notes --latest
-          if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
+          version=$(node -p "require('./package.json').version")
+          gh release create "v$version" release/* --target "$GITHUB_SHA" --title "ChatRightNow v$version" --generate-notes --draft
+          gh release edit "v$version" --draft=false --latest

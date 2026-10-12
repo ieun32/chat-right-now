@@ -2,12 +2,12 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { createUpdates } = require('../src/main/updates');
-function fixture(packaged = true) {
+function fixture(packaged = true, options = {}) {
   const updater = new EventEmitter(); const calls = [];
   updater.checkForUpdates = async () => { calls.push('check'); };
   updater.downloadUpdate = async () => { calls.push('download'); };
   updater.quitAndInstall = (...args) => calls.push(['install', ...args]);
-  const controller = createUpdates({ app: { isPackaged: packaged, getVersion: () => '0.2.0' }, updater });
+  const controller = createUpdates({ app: { isPackaged: packaged, getVersion: () => '0.2.0' }, updater, ...options });
   return { updater, controller, calls };
 }
 test('startup check does not download or install until explicitly requested', async () => {
@@ -23,6 +23,23 @@ test('startup check does not download or install until explicitly requested', as
   assert.deepEqual(calls.at(-1), ['install', false, true]);
   assert.equal(calls.length, 3);
   assert.equal(updater.autoInstallOnAppQuit, false);
+});
+test('unsigned Mac checks versions but opens the download page instead of installing', async () => {
+  let opened = 0;
+  const { updater, controller, calls } = fixture(true, {
+    manualInstall: true, openDownload: async () => { opened++; },
+  });
+  await controller.check();
+  assert.deepEqual(calls, ['check']);
+  await controller.download();
+  assert.equal(opened, 0);
+  updater.emit('update-available', { version: '0.3.0' });
+  await controller.download();
+  assert.equal(opened, 1);
+  updater.emit('update-downloaded', { version: '0.3.0' });
+  controller.install();
+  assert.deepEqual(calls, ['check']);
+  assert.equal(controller.getState().manualInstall, true);
 });
 test('failed update checks leave the app usable and can be retried', async () => {
   const { updater, controller, calls } = fixture();

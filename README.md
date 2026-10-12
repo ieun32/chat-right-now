@@ -4,6 +4,23 @@ A Windows desktop app where pixel-art animal characters roam your wallpaper and
 **people who are online right now** chat with each other in real time via speech
 bubbles.
 
+## Download and updates
+
+Windows installers are distributed through
+[GitHub Releases](https://github.com/ieun32/chat-right-now/releases/latest).
+Choose `ChatRightNow-Setup-<version>-x64.exe` from the release assets. The link
+becomes available after the first release is published; GitHub's source-code
+ZIP is not an installer.
+
+Version **0.2.0** introduces the updater. Install this version manually once if
+you are on 0.1.0. Installed builds check the latest stable GitHub release when
+the app starts. The join screen and settings menu show your installed version
+and update status. Choose **새 버전 다운로드**, then **재시작하여 설치** when ready;
+installation closes the app and disconnects the current room. Checking does not
+automatically download, and quitting normally does not install an update.
+Network errors leave the app usable and can be retried. Development mode does
+not query releases. The tray also shows the version and an update-check action.
+
 - **No saved chat history.** The app does not persist chat messages or deliver
   them to offline users. Participants can still record what they receive.
 - **Peer-to-peer.** Chat and positions travel directly over a WebRTC DataChannel
@@ -117,8 +134,8 @@ an issue first, especially changes to networking, encryption, or user experience
 3. Follow the local setup above and make a focused change. Include
    `package-lock.json` when dependencies change. Identify the source and license
    of any third-party code or assets you add.
-4. Run `npm run build` and `git diff --check`. There is currently no automated
-   test suite. For behavior changes, also test the affected flow manually:
+4. Run `npm run build`, `npm test`, and `git diff --check`.
+   For behavior changes, also test the affected flow manually:
    joining/leaving, movement, chat, or overlay controls. For networking changes,
    verify two peers can communicate in the same test room.
 5. Review `git diff` and `git status --short` for unintended files or secrets,
@@ -140,7 +157,20 @@ exploit details or sensitive information.
 ## Controls
 
 - **Arrow keys / WASD** — move
-- **Enter** — open the chat input (Enter again to send, Esc to cancel)
+- **Shift + movement** — run (1.8× speed)
+- **Space** — jump
+- **E** — toggle the radial inventory around your character
+- **Click a weapon / 1, 2, 3 while the inventory is open** — equip the
+  dokkaebi club, gun, or flamethrower
+- **F** — use the equipped weapon in the direction you face
+- **Enter** — open the chat input (Enter again to send)
+- **Esc** — hide the app while it has keyboard focus; also cancel any open
+  chat draft. During IME composition, Esc is left to the input method.
+- **Ctrl+Alt+V** — globally toggle hide/show, including bringing the app back
+  after Esc. Hiding keeps you connected to the room, but marks your character
+  offline with a gray crossed-out Wi-Fi icon for other participants. Showing the
+  app restores your online status. Hidden participants can still receive data;
+  this indicator describes visibility, not a disconnected network connection.
 - **Ctrl+Alt+C** — give the overlay keyboard focus (empty space passes clicks
   through to the desktop, so the window may not be focused otherwise)
 - Tray icon → Quit to exit
@@ -148,6 +178,43 @@ exploit details or sensitive information.
 Hover the cursor over a character and only that region captures the mouse (and
 grabs focus); empty space passes clicks straight through to the real desktop and
 other windows.
+
+Weapons have different ranges and cooldowns. A hit produces X-shaped eyes,
+a tongue-out expression, and orbiting stars, and stops movement/attacking/jumping
+for three seconds. Hits do not extend an existing stun. Hidden characters are
+excluded from hits. Jumping is a movement animation, not attack immunity.
+Gameplay uses peer-reported state and is intended for casual play, not a
+server-authoritative competitive game. All participants need this version to
+see the new gameplay and availability states.
+
+## Publishing a Windows release (maintainer)
+
+1. Set repository Actions secrets `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`
+   to the intended public service's URL and client publishable/legacy anon key.
+   These values are intentionally readable in the installed client. Never use
+   a service-role key or secret API key. The release build rejects those keys
+   and includes only the required client settings.
+2. Update `package.json` and `package-lock.json` together with
+   `npm version <version> --no-git-tag-version`, then commit the release changes.
+3. Push a matching tag such as `v0.2.0`, or run **Windows release** in Actions.
+   The workflow tests and builds on Windows, then publishes the installer,
+   `.exe.blockmap`, and `latest.yml` together on GitHub Releases.
+4. Verify the download and install the release on a test machine. Keep the
+   release public and stable for automatic update discovery. Tags alone and
+   draft releases do not make an update available.
+
+For a local release build, `npm run dist -- --x64` uses the client settings in
+`config.json` unless the two environment variables above are supplied. It
+creates release files without uploading. Upload the matching installer,
+blockmap, and `latest.yml` together; do not mix metadata from different builds.
+GitHub upload credentials belong in the release job, never in the app.
+The current local build is unsigned; Windows may show a publisher warning.
+
+Run `npm test` for state/geometry/updater tests. On Windows,
+`npx electron tools/smoke-electron.cjs` additionally exercises two real Electron
+renderers with local WebRTC, all three weapons, stun recovery, sprint/jump,
+availability updates, and update UI. Screenshots are saved under ignored `dist/`.
+It does not connect to the production Supabase project or install updates.
 
 ## License
 

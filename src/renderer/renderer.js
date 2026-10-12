@@ -11,6 +11,9 @@ import {
   addBubble, pruneBubbles, clampX, clampY,
 } from '../shared/world.js';
 import { loadSprites, animals, drawActor, drawPreview, setViewScale, getViewScale } from './render.js';
+import { wireUpdates } from './updates.js';
+import { createGameplay } from './gameplay.js';
+import { RUN_MULTIPLIER, stunned, WEAPONS } from '../shared/combat.js';
 
 const SCALE_KEY = 'crn.viewScale';
 function loadSavedScale() {
@@ -47,6 +50,10 @@ const state = {
   selectedAnimal: 'cat',
   chatOpen: false,
   joined: false,
+  hidden: false,
+  sprinting: false,
+  inventoryOpen: false,
+  lastSpeed: 1,
   dragging: false,
   menuOpen: false,
   keys: { left: false, right: false, up: false, down: false },
@@ -54,11 +61,14 @@ const state = {
   boxes: new Map(),   // id -> screen box (for cursor hit-testing)
   interactive: null,  // last value pushed to the main process
 };
+let gameplay;
 
 // ---------------------------------------------------------------- boot
 (async function boot() {
+  wireUpdates();
   state.config = await fetch('./config.json').then((r) => r.json());
   await loadSprites();
+  gameplay = createGameplay({ state, recomputeDirection, pushHotspots });
   await ensureFont();
   loadSavedScale();
   buildAnimalPicker();
@@ -107,7 +117,7 @@ function wireJoinScreen() {
   $('hud-quit').onclick = () => window.overlay?.quit();
   $('join-close').onclick = () => window.overlay?.quit();
   $('hud-leave').onclick = () => leaveRoom();
-  $('hud-hide').onclick = () => { setMenuOpen(false); window.overlay?.hide(); };
+  $('hud-hide').onclick = hideOverlay;
 }
 
 /** Disconnect from the mesh and return to the join modal so a new room can be picked. */
@@ -115,6 +125,7 @@ let leaving = false;
 async function leaveRoom() {
   if (!state.joined || leaving) return;
   leaving = true;
+  gameplay?.close();
   const mesh = state.mesh;
   state.mesh = null;
   try { await mesh?.stop(); } catch (err) { console.error('[leave]', err); }
@@ -180,8 +191,10 @@ async function join() {
   $('enter').disabled = true;
 
   const spawn = { x: 0.2 + Math.random() * 0.6, y: 0.78 + Math.random() * 0.16 };
-  const self = { peerId: state.peerId, nick, animal: state.selectedAnimal, x: spawn.x, y: spawn.y };
+  const self = { peerId: state.peerId, nick, animal: state.selectedAnimal, x: spawn.x, y: spawn.y, hidden: state.hidden };
   state.local = makeActor({ id: self.peerId, nick, animal: self.animal, x: spawn.x, y: spawn.y, isLocal: true });
+  state.local.weapon = 'club';
+  state.local.hidden = state.hidden;
   state.world.set(self.peerId, state.local);
 
   try {
@@ -219,28 +232,41 @@ function ensureActor(id, meta = {}) {
 }
 
 function wireMesh(mesh) {
-  mesh.on(MESH_EVENT.PEER_JOIN, ({ id, nick, animal, x, y }) => {
+  mesh.on(MESH_EVENT.PEER_JOIN, ({ id, nick, animal, x, y, hidden, weapon }) => {
     const a = ensureActor(id, { nick, animal, x, y });
     a.nick = nick; a.animal = animal;
+    a.hidden = hidden === true;
+    a.weapon = Object.hasOwn(WEAPONS, weapon) ? weapon : 'club';
     if (typeof x === 'number') a.x = clampX(x);
     if (typeof y === 'number') a.y = clampY(y);
   });
   mesh.on(MESH_EVENT.PEER_LEAVE, ({ id }) => state.world.delete(id));
-  mesh.on(MESH_EVENT.PEER_MOVE, ({ id, state: st }) => applyMove(ensureActor(id), st));
+  mesh.on(MESH_EVENT.PEER_MOVE, ({ id, state: st }) => {
+    const actor = ensureActor(id);
+    if (!stunned(actor)) applyMove(actor, st);
+  });
+  mesh.on(MESH_EVENT.PEER_ACTION, ({ id, action }) => gameplay?.receive(id, action));
   mesh.on(MESH_EVENT.PEER_CHAT, ({ id, text }) => addBubble(ensureActor(id), sanitizeText(text, WORLD.MAX_CHAT_LEN)));
   mesh.on(MESH_EVENT.PEER_PROFILE, ({ id, nick, animal }) => {
     const a = ensureActor(id); a.nick = nick; a.animal = animal;
+  });
+  mesh.on(MESH_EVENT.PEER_AVAILABILITY, ({ id, hidden }) => {
+    const actor = state.world.get(id);
+    if (actor) actor.hidden = hidden;
   });
   mesh.on(MESH_EVENT.STATUS, (text) => { $('hud-online').textContent = text; });
 }
 
 // ---------------------------------------------------------------- input
 function recomputeDirection() {
-  if (!state.joined || state.chatOpen) return;
+  if (!state.joined) return;
   const k = state.keys;
-  const dx = (k.right ? 1 : 0) - (k.left ? 1 : 0);
-  const dy = (k.down ? 1 : 0) - (k.up ? 1 : 0);
-  if (dx === state.lastDir.dx && dy === state.lastDir.dy) return;
+  const blocked = state.chatOpen || state.inventoryOpen || state.hidden || stunned(state.local);
+  const dx = blocked ? 0 : (k.right ? 1 : 0) - (k.left ? 1 : 0);
+  const dy = blocked ? 0 : (k.down ? 1 : 0) - (k.up ? 1 : 0);
+  const speed = state.sprinting ? RUN_MULTIPLIER : 1;
+  if (dx === state.lastDir.dx && dy === state.lastDir.dy && speed === state.lastSpeed) return;
+  state.lastSpeed = speed;
   state.lastDir = { dx, dy };
   applyLocalMove(dx, dy);
 }
@@ -249,9 +275,10 @@ function applyLocalMove(dx, dy) {
   const a = state.local;
   settle(a); // collapse extrapolation so we send from the true current spot
   const { vx, vy } = velocityFor(dx, dy);
-  applyMove(a, { x: a.x, y: a.y, vx, vy });
+  const speed = state.sprinting ? RUN_MULTIPLIER : 1;
+  applyMove(a, { x: a.x, y: a.y, vx: vx * speed, vy: vy * speed });
   // Movement is event-based: one packet at the *change*, nothing while held.
-  state.mesh?.sendMove({ x: a.x, y: a.y, vx, vy });
+  state.mesh?.sendMove({ x: a.x, y: a.y, vx: vx * speed, vy: vy * speed });
 }
 
 const KEYMAP = {
@@ -266,10 +293,28 @@ function typingInField(e) {
   return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
 }
 
+function hideOverlay() {
+  gameplay?.close();
+  state.keys = { left: false, right: false, up: false, down: false };
+  if (state.chatOpen) closeChat();
+  recomputeDirection();
+  setMenuOpen(false);
+  window.overlay?.hide();
+}
+
 window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    // Let the input method consume Escape when cancelling text composition.
+    if (e.isComposing || e.keyCode === 229) return;
+    e.preventDefault();
+    if (!e.repeat) hideOverlay();
+    return;
+  }
   if (typingInField(e)) return; // never hijack keys meant for a text field
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  if (gameplay?.keydown(e)) return;
   if (e.key === 'Enter' && state.joined && !state.chatOpen) { e.preventDefault(); openChat(); return; }
-  if (!state.joined || state.chatOpen) return; // no movement before joining / while typing chat
+  if (!state.joined || state.chatOpen || state.inventoryOpen || stunned(state.local)) return;
   const dir = KEYMAP[e.key];
   if (dir) {
     e.preventDefault();
@@ -277,21 +322,36 @@ window.addEventListener('keydown', (e) => {
   }
 });
 window.addEventListener('keyup', (e) => {
+  if (e.key === 'Shift') { state.sprinting = false; recomputeDirection(); }
   if (typingInField(e)) return;
   const dir = KEYMAP[e.key];
   if (dir && state.keys[dir]) { state.keys[dir] = false; recomputeDirection(); }
 });
 // Dropping focus (Alt-Tab away) would strand keys as "held"; clear them.
 window.addEventListener('blur', () => {
+  state.sprinting = false;
   state.keys = { left: false, right: false, up: false, down: false };
   if (state.joined && !state.chatOpen) recomputeDirection();
 });
 
 // The global hotkey (Ctrl+Alt+C) asks us to take focus for keyboard control.
 window.overlay?.onToggleControl(() => { window.overlay?.focus(); $('stage').focus(); });
+window.overlay?.onVisibility((visible) => {
+  state.hidden = !visible;
+  if (!visible) {
+    gameplay?.close();
+    state.sprinting = false;
+    state.keys = { left: false, right: false, up: false, down: false };
+    state.lastDir = { dx: 0, dy: 0 };
+    if (state.local) applyLocalMove(0, 0);
+  }
+  if (state.local) state.local.hidden = state.hidden;
+  state.mesh?.setHidden(state.hidden);
+});
 
 // ---------------------------------------------------------------- chat
 function openChat() {
+  gameplay?.close();
   state.chatOpen = true;
   // stop walking while typing
   state.keys = { left: false, right: false, up: false, down: false };
@@ -318,10 +378,6 @@ $('chatbar').addEventListener('submit', (e) => {
   }
   closeChat();
 });
-$('chat-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { e.preventDefault(); closeChat(); }
-});
-
 // ---------------------------------------------------------------- anti-drift sync
 setInterval(() => {
   if (!state.joined || !state.local) return;
@@ -344,6 +400,9 @@ function computeHotspots() {
     return [{ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }];
   }
   const rects = [inflate($('hud-toggle').getBoundingClientRect(), 12)];
+  if (state.inventoryOpen) {
+    document.querySelectorAll('.weapon-slot').forEach(slot => rects.push(inflate(slot.getBoundingClientRect(), 6)));
+  }
   if (state.menuOpen) rects.push(inflate($('hud-menu').getBoundingClientRect(), 12));
   for (const box of state.boxes.values()) rects.push({ x: box.x, y: box.y, w: box.w, h: box.h });
   return rects;
@@ -385,6 +444,7 @@ resize();
 let lastHotspotPush = 0;
 function loop() {
   const now = Date.now();
+  gameplay?.tick();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   state.boxes.clear();
 

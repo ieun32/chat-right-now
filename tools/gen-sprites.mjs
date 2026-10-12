@@ -2,8 +2,8 @@
 // No dependencies: hand-encoded PNG via zlib + fs. Run: node tools/gen-sprites.mjs
 //
 // Layout (fixed contract): 32x32 cells. Row = animal, Column = frame.
-// 6 cols: idle0, idle1, walk0, walk1, walk2, walk3.  8 rows (animals).
-// Sheet: 192x256. All characters face RIGHT (app flips for left).
+// 16 cols: idle(2), walk(4), run(4), jump(3), stunned(3). 8 rows (animals).
+// Sheet: 512x256. All characters face RIGHT (app flips for left).
 
 import { deflateSync } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -11,9 +11,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const CELL = 32;
-const COLS = 6; // idle0, idle1, walk0..walk3
+const COLS = 16; // idle(2), walk(4), run(4), jump(3), stunned(3)
 const ANIMALS = ['cat', 'dog', 'rabbit', 'frog', 'fox', 'bird', 'bear', 'panda'];
-const SHEET_W = COLS * CELL;         // 192
+const SHEET_W = COLS * CELL;         // 512
 const SHEET_H = ANIMALS.length * CELL; // 256
 
 // ---- tiny RGBA canvas helpers (operate on one 32x32 cell) ----------------
@@ -77,7 +77,7 @@ const P = {
 //
 // Coordinate convention: feet sit at y=31 (bottom). Head near top.
 // We draw a generic quadruped/critter and specialize head details per animal.
-function drawAnimal(name, { bob = 0, legPhase = -1, squash = 0 }) {
+function drawAnimal(name, { bob = 0, legPhase = -1, squash = 0, running = false, hurt = false }) {
   const cell = newCell();
   const pal = P[name];
   const cx = 16; // horizontal centre
@@ -99,6 +99,7 @@ function drawAnimal(name, { bob = 0, legPhase = -1, squash = 0 }) {
   ];
   let backDx = 0, frontDx = 0;
   if (legPhase >= 0) { [backDx, frontDx] = gait[legPhase]; }
+  if (running) { backDx *= 2; frontDx *= 2; }
   // idle: legs straight down.
   const legW = 3;
   // back leg (left, -x side), front leg (right, +x side)
@@ -156,7 +157,8 @@ function drawAnimal(name, { bob = 0, legPhase = -1, squash = 0 }) {
       px(cell, hx - 3, earTop - 5, pal.dark); px(cell, hx + 2, earTop - 5, pal.dark);
       // pink nose + fluffy tail
       px(cell, hx + 2, headY + 5, pal.nose);
-      rect(cell, cx + 5, bodyBottom - 2, 3, 3, pal.belly);
+      // Frames face right: the tail belongs on the rear (left) hip.
+      rect(cell, cx - 8, bodyBottom - 2, 3, 3, pal.belly);
       break;
     }
     case 'frog': {
@@ -209,6 +211,19 @@ function drawAnimal(name, { bob = 0, legPhase = -1, squash = 0 }) {
     }
   }
 
+  if (hurt) {
+    // Replace the eyes with two readable Xs and a pink tongue.
+    rect(cell, hx - 3, headY + 2, 9, 6, pal.body);
+    for (const eyeX of [hx - 2, hx + 3]) {
+      for (let i = 0; i < 3; i++) {
+        px(cell, eyeX + i - 1, headY + 2 + i, pal.line);
+        px(cell, eyeX + 1 - i, headY + 2 + i, pal.line);
+      }
+    }
+    rect(cell, hx + 1, headY + 6, 4, 1, pal.line);
+    rect(cell, hx + 2, headY + 7, 2, 3, [244, 126, 156]);
+    px(cell, hx + 3, headY + 9, [210, 82, 118]);
+  }
   outline(cell, pal.line);
   return cell;
 }
@@ -222,6 +237,11 @@ function framesFor(name) {
     drawAnimal(name, { bob: 1, legPhase: 1 }),             // walk1 (bob up)
     drawAnimal(name, { bob: 0, legPhase: 2 }),             // walk2
     drawAnimal(name, { bob: 1, legPhase: 3 }),             // walk3 (bob up)
+    ...[0, 1, 2, 3].map(legPhase => drawAnimal(name, { legPhase, running: true, bob: legPhase % 2 ? -1 : 0 })),
+    drawAnimal(name, { squash: 2 }), // takeoff / landing
+    drawAnimal(name, { bob: -1, legPhase: 0, running: true }),
+    drawAnimal(name, { bob: 0, legPhase: 2 }),
+    ...[0, 1, 0].map(bob => drawAnimal(name, { bob, hurt: true })),
   ];
 }
 
@@ -306,10 +326,67 @@ writeFileSync(join(assetsDir, 'sprites.png'), png);
 const atlas = {
   frameW: CELL,
   frameH: CELL,
-  cols: { idle: [0, 1], walk: [2, 3, 4, 5] },
+  cols: { idle: [0, 1], walk: [2, 3, 4, 5], run: [6, 7, 8, 9], jump: [10, 11, 12], stunned: [13, 14, 15] },
   animals: ANIMALS,
 };
 writeFileSync(join(assetsDir, 'sprites.json'), JSON.stringify(atlas, null, 2) + '\n');
+
+// Weapons and attack effects use the same native pixel grid and palette style.
+const FX_COLS = 6, FX_ROWS = 5;
+const fx = new Uint8Array(FX_COLS * CELL * FX_ROWS * CELL * 4);
+function line(cell, x0, y0, x1, y1, color) {
+  const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+  for (let i = 0; i <= n; i++) px(cell, Math.round(x0 + (x1 - x0) * i / (n || 1)), Math.round(y0 + (y1 - y0) * i / (n || 1)), color);
+}
+const gold = [255, 207, 92], white = [255, 247, 199], orange = [248, 132, 43];
+for (let row = 0; row < FX_ROWS; row++) for (let col = 0; col < FX_COLS; col++) {
+  const cell = newCell();
+  if (row === 0) {
+    if (col === 0) { // studded dokkaebi club, diagonal
+      for (let i = 0; i < 5; i++) line(cell, 5, 26 - i, 23, 8 - i, [120 + i * 12, 73 + i * 6, 36]);
+      for (let i = 0; i < 10; i++) line(cell, 12, 20 - i, 24, 8 - i, [150 + i * 5, 94 + i * 3, 43]);
+      for (const [x,y] of [[13,10],[19,5],[22,11],[16,16]]) rect(cell,x,y,3,3,gold);
+    } else if (col === 1) {
+      rect(cell,7,12,20,8,[130,146,164]);rect(cell,8,11,4,10,[75,168,240]);
+      rect(cell,22,12,5,8,[75,168,240]);rect(cell,13,19,5,7,[81,88,105]);
+      rect(cell,13,13,9,3,[226,234,242]);rect(cell,27,14,3,4,[60,68,86]);
+    } else if (col === 2) {
+      rect(cell,3,10,7,15,orange);rect(cell,5,7,3,3,gold);
+      rect(cell,11,13,16,7,[124,136,150]);rect(cell,25,12,4,9,[73,81,96]);
+      rect(cell,14,20,4,6,[114,71,51]);rect(cell,5,12,2,10,gold);
+    }
+    if (col < 3) outline(cell,[38,38,49]);
+  } else if (row === 1) {
+    for(let i=0;i<22;i++) {
+      const a=(-1.3+i*.11)+(col-2)*.2;
+      const x=Math.round(12+Math.cos(a)*14),y=Math.round(15+Math.sin(a)*14);
+      rect(cell,x,y,2,2,gold);px(cell,x-1,y,white);
+    }
+  } else if (row === 2) {
+    const r=col%2?5:8;
+    for(let i=-r;i<=r;i++) { px(cell,16+i,16,gold);px(cell,16,16+i,gold); }
+    rect(cell,14,14,5,5,white);rect(cell,25,15,5,2,gold);
+  } else if (row === 3) {
+    for(let x=2;x<31;x++) {
+      const spread=Math.floor(2+x*.3);
+      for(let y=16-spread;y<=16+spread;y++) {
+        if((x+y+col)%7===0 && Math.abs(y-16)>spread-2)continue;
+        px(cell,x,y,Math.abs(y-16)<spread*.4?white:Math.abs(y-16)<spread*.7?gold:orange);
+      }
+    }
+  } else {
+    for(let i=0;i<3;i++) {
+      const a=(col/6+i/3)*Math.PI*2;
+      const x=Math.round(15+Math.cos(a)*11),y=Math.round(15+Math.sin(a)*5);
+      rect(cell,x-3,y-1,7,3,gold);rect(cell,x-1,y-3,3,7,gold);px(cell,x,y,white);
+    }
+  }
+  for(let y=0;y<CELL;y++) for(let x=0;x<CELL;x++) {
+    const from=(y*CELL+x)*4,to=((row*CELL+y)*FX_COLS*CELL+col*CELL+x)*4;
+    fx.set(cell.subarray(from,from+4),to);
+  }
+}
+writeFileSync(join(assetsDir,'combat.png'),encodePng(fx,FX_COLS*CELL,FX_ROWS*CELL));
 
 // ---- self-check: dump alpha mask of one frame + confirm every animal draws ---
 function alphaAscii(cell) {

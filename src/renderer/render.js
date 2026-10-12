@@ -3,8 +3,10 @@
  * it never mutates the world.
  */
 import { WORLD, posAt, isMoving } from '../shared/world.js';
+import { WEAPONS, stunned, jumpHeight, JUMP_MS } from '../shared/combat.js';
 
 let sheet = null; // { img, atlas }
+let combatSheet = null;
 let viewScale = 1; // per-viewer size multiplier on top of WORLD.SPRITE_SCALE
 
 /** Local-only render size multiplier (does not affect other peers' screens). */
@@ -22,6 +24,11 @@ export async function loadSprites() {
     img.src = '../assets/sprites.png';
   });
   sheet = { img, atlas };
+  combatSheet = new Image();
+  await new Promise((resolve, reject) => {
+    combatSheet.onload = resolve; combatSheet.onerror = reject;
+    combatSheet.src = '../assets/combat.png';
+  });
   return sheet;
 }
 
@@ -32,10 +39,12 @@ export function animals() {
 function frameFor(actor, now) {
   const { atlas } = sheet;
   const moving = isMoving(actor, now);
-  const key = moving ? 'walk' : 'idle';
-  const fps = moving ? WORLD.WALK_FPS : WORLD.IDLE_FPS;
+  const jumping = jumpHeight(actor, now) > 0;
+  const running = Math.hypot(actor.vx / WORLD.SPEED_X, actor.vy / WORLD.SPEED_Y) > 1.2;
+  const key = stunned(actor, now) ? 'stunned' : jumping ? 'jump' : moving ? (running ? 'run' : 'walk') : 'idle';
+  const fps = key === 'stunned' ? 5 : running ? 12 : moving ? WORLD.WALK_FPS : WORLD.IDLE_FPS;
   const cols = atlas.cols[key];
-  const col = cols[Math.floor((now / 1000) * fps) % cols.length];
+  const col = jumping && key === 'jump' ? cols[Math.min(2, Math.floor((now - actor.jumpStarted) / JUMP_MS * 3))] : cols[Math.floor((now / 1000) * fps) % cols.length];
   let row = atlas.animals.indexOf(actor.animal);
   if (row < 0) row = 0;
   return { sx: col * atlas.frameW, sy: row * atlas.frameH, w: atlas.frameW, h: atlas.frameH };
@@ -70,7 +79,13 @@ export function drawActor(ctx, actor, canvasW, canvasH, dpr, now) {
   const feetX = p.x * cssW;
   const feetY = p.y * cssH;
   const left = feetX - drawW / 2;
-  const top = feetY - drawH;
+  const lift = jumpHeight(actor, now) * 55 * viewScale;
+  const top = feetY - drawH - lift;
+
+  if (lift > 0) {
+    ctx.save();ctx.scale(dpr,dpr);ctx.fillStyle='rgba(0,0,0,.25)';
+    ctx.beginPath();ctx.ellipse(feetX,feetY,drawW*.25,4,0,0,Math.PI*2);ctx.fill();ctx.restore();
+  }
 
   ctx.imageSmoothingEnabled = false;
   ctx.save();
@@ -85,10 +100,68 @@ export function drawActor(ctx, actor, canvasW, canvasH, dpr, now) {
   }
   ctx.restore();
 
+  if (actor.weapon && !actor.hidden && !stunned(actor, now)) {
+    drawCombat(ctx, 0, Object.keys(WEAPONS).indexOf(actor.weapon), feetX + actor.facing * drawW * .25, top + drawH * .6, 30 * viewScale, 30 * viewScale, dpr, actor.facing);
+  }
+  if (actor.attack && now - actor.attack.at < WEAPONS[actor.attack.weapon].duration) {
+    const attack = actor.attack, w = WEAPONS[attack.weapon], t = (now-attack.at)/w.duration;
+    const originX = attack.x * cssW, originY = attack.y * cssH - drawH*.5;
+    const effectW = w.range * cssW;
+    if (attack.weapon === 'gun') {
+      drawCombat(ctx,w.row,Math.floor(t*6)%6,originX + attack.facing * effectW*t,originY,30,30,dpr,attack.facing);
+    } else {
+      drawCombat(ctx,w.row,Math.floor(t*6)%6,originX+attack.facing*effectW*.5,originY,effectW,attack.weapon==='flame'?55*viewScale:drawH,dpr,attack.facing);
+    }
+  }
+
   drawNameTag(ctx, actor.nick, feetX, top, dpr);
-  drawBubbles(ctx, actor, feetX, top, dpr, now);
+  if (actor.hidden) drawOfflineIcon(ctx, feetX, top - 32, dpr);
+  if (stunned(actor, now)) drawCombat(ctx,4,Math.floor(now/120)%6,feetX,top-(actor.hidden?57:30),48,28,dpr);
+  drawBubbles(ctx, actor, feetX, top - (actor.hidden ? 26 : 0) - (stunned(actor,now)?30:0), dpr, now);
 
   return { x: left, y: top, w: drawW, h: drawH };
+}
+
+function drawCombat(ctx,row,col,cx,cy,w,h,dpr=1,facing=1) {
+  if(!combatSheet || col<0)return;
+  ctx.save();ctx.scale(dpr,dpr);ctx.translate(cx,cy);ctx.scale(facing,1);
+  ctx.imageSmoothingEnabled=false;ctx.drawImage(combatSheet,col*32,row*32,32,32,-w/2,-h/2,w,h);ctx.restore();
+}
+export function drawWeaponPreview(ctx, weapon) {
+  ctx.clearRect(0,0,64,64);
+  drawCombat(ctx,0,Object.keys(WEAPONS).indexOf(weapon),32,32,64,64);
+}
+
+/** A neutral gray Wi-Fi-off badge, above the name and below chat bubbles. */
+function drawOfflineIcon(ctx, cx, cy, dpr) {
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  ctx.translate(cx, cy);
+  ctx.fillStyle = 'rgba(16,18,26,0.82)';
+  roundRect(ctx, -13, -12, 26, 24, 5);
+  ctx.fill();
+  ctx.strokeStyle = '#a0a0a0';
+  ctx.fillStyle = '#a0a0a0';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  for (const radius of [7, 12]) {
+    ctx.beginPath();
+    ctx.arc(0, 7, radius, -Math.PI * 0.77, -Math.PI * 0.23);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 6, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-9, -8);
+  ctx.lineTo(9, 9);
+  ctx.strokeStyle = '#202020';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  ctx.strokeStyle = '#a0a0a0';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawNameTag(ctx, nick, cx, topY, dpr) {

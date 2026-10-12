@@ -13,9 +13,21 @@
  */
 const { app, BrowserWindow, ipcMain, globalShortcut, screen, Tray, Menu, nativeImage } = require('electron');
 const path = require('node:path');
+const { autoUpdater } = require('electron-updater');
+const { createUpdates } = require('./updates');
 
 let win = null;
 let tray = null;
+const updates = createUpdates({ app, updater: autoUpdater, publish: state => {
+  if (win && !win.isDestroyed()) win.webContents.send('updates:state', state);
+} });
+
+for (const action of ['getState', 'check', 'download', 'install']) {
+  ipcMain.handle(`updates:${action}`, (event) => {
+    if (event.sender !== win?.webContents || event.senderFrame !== win.webContents.mainFrame) return;
+    return updates[action]();
+  });
+}
 
 // Force a single instance — a second launch just focuses the existing overlay.
 if (!app.requestSingleInstanceLock()) {
@@ -62,6 +74,10 @@ function createWindow() {
   win.setIgnoreMouseEvents(true, { forward: true });
 
   win.loadFile(path.join(__dirname, '../../dist/index.html'));
+
+  // Window events cover Esc, buttons, global shortcuts, and the tray alike.
+  win.on('hide', () => win?.webContents.send('overlay:visibility', false));
+  win.on('show', () => win?.webContents.send('overlay:visibility', true));
 
   win.once('ready-to-show', () => win.show());
 
@@ -132,9 +148,11 @@ function createTray() {
   let image = nativeImage.createFromPath(path.join(__dirname, '../../assets/tray.png'));
   if (image.isEmpty()) image = nativeImage.createEmpty();
   tray = new Tray(image);
-  tray.setToolTip('ChatRightNow');
+  tray.setToolTip(`ChatRightNow v${app.getVersion()}`);
   const menu = Menu.buildFromTemplate([
-    { label: 'Show / Hide (Ctrl+Alt+H)', click: toggleHide },
+    { label: `ChatRightNow v${app.getVersion()}`, enabled: false },
+    { label: '업데이트 확인', click: () => { summon(); updates.check(); } },
+    { label: 'Show / Hide (Ctrl+Alt+V)', click: toggleHide },
     { label: 'Focus overlay (Ctrl+Alt+C)', click: summon },
     { type: 'separator' },
     { label: 'Quit ChatRightNow (Ctrl+Alt+Q)', click: () => app.quit() },
@@ -148,10 +166,11 @@ function createTray() {
 app.whenReady().then(() => {
   createWindow();
   createTray();
+  win.webContents.once('did-finish-load', () => updates.check());
   pollTimer = setInterval(pollCursor, 45);
   globalShortcut.register('CommandOrControl+Alt+C', summon);
   // Quick hide/show toggle — works even while hidden, so it's the way back.
-  globalShortcut.register('CommandOrControl+Alt+H', toggleHide);
+  globalShortcut.register('CommandOrControl+Alt+V', toggleHide);
   // A quit path that always works, regardless of click-through / focus state.
   globalShortcut.register('CommandOrControl+Alt+Q', () => app.quit());
 });

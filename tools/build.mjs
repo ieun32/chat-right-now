@@ -6,13 +6,14 @@
  *   node tools/build.mjs --watch   rebuild on change
  *
  * The Electron main process and preload run in Node and are NOT bundled — they
- * are loaded straight from src/main and only use built-ins + electron.
+ * are loaded straight from src/main with their production dependencies.
  */
 import { build, context } from 'esbuild';
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { releaseConfig } from './release-config.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(root, 'dist');
@@ -38,8 +39,8 @@ async function copyShell() {
   const cfgPath = existsSync(path.join(root, 'config.json'))
     ? path.join(root, 'config.json')
     : path.join(root, 'config.example.json');
-  const cfg = await readFile(cfgPath, 'utf8');
-  await writeFile(path.join(dist, 'config.json'), cfg);
+  const cfg = JSON.parse(await readFile(cfgPath, 'utf8'));
+  await writeFile(path.join(dist, 'config.json'), JSON.stringify(process.argv.includes('--release') ? releaseConfig(cfg) : cfg, null, 2));
 }
 
 await copyShell();

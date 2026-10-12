@@ -12,6 +12,12 @@
        tabindex makes it focusable so keyboard control never gets stuck on a
        hidden text input. -->
   <canvas id="stage" tabindex="-1"></canvas>
+  <div id="inventory" class="hidden" role="group" aria-label="무기 선택">
+    <div class="inventory-ring"></div>
+    <button class="weapon-slot" data-weapon="club" aria-label="도깨비방망이"><canvas width="64" height="64"></canvas><span>도깨비방망이 · 1</span></button>
+    <button class="weapon-slot" data-weapon="gun" aria-label="총"><canvas width="64" height="64"></canvas><span>총 · 2</span></button>
+    <button class="weapon-slot" data-weapon="flame" aria-label="화염방사기"><canvas width="64" height="64"></canvas><span>화염방사기 · 3</span></button>
+  </div>
 
   <!-- Collapsed floating dock: a single button that expands a settings menu upward -->
   <div id="hud" class="dock hidden">
@@ -25,9 +31,10 @@
         <input id="hud-size" type="range" min="0.4" max="3" step="0.1" value="1" />
         <span id="hud-size-val" class="muted">1.0×</span>
       </label>
-      <button id="hud-hide" title="숨기기 (Ctrl+Alt+H)">👁 숨기기</button>
-      <div class="hint muted">Enter 채팅 · 방향키/WASD · Ctrl+Alt+C 포커스 · Ctrl+Alt+H 숨김</div>
+      <button id="hud-hide" title="숨기기 (Esc) · 숨김/표시 (Ctrl+Alt+V)">👁 숨기기</button>
+      <div class="hint muted">Enter 채팅 · 방향키/WASD 이동<br>Shift 달리기 · Space 점프<br>E 무기 선택 · F 공격<br>Esc 숨김 · Ctrl+Alt+V 숨김/표시</div>
       <div class="menu-actions">
+        <div class="update-panel"><span data-app-version></span><span data-update-status role="status"></span><button class="px" data-update-action>업데이트 확인</button></div>
         <button id="hud-leave" title="방 나가고 처음으로">← 방 나가기</button>
         <button id="hud-quit" title="종료 (Ctrl+Alt+Q)">✕ 종료</button>
       </div>
@@ -61,6 +68,7 @@
 
       <button id="enter" class="primary">입장</button>
       <p id="join-error" class="error"></p>
+      <div class="update-panel"><span data-app-version></span><span data-update-status role="status"></span><button class="px" data-update-action>업데이트 확인</button></div>
     </div>
   </div>
 

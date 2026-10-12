@@ -1,6 +1,6 @@
 {
   "name": "chat-right-now",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "description": "Desktop pet mesh chat - pixel animals roaming your Windows desktop with real-time P2P chat",
@@ -12,26 +12,42 @@
     "start": "npm run build && electron .",
     "dev": "node tools/dev.mjs",
     "signal": "node tools/dev-signal-server.mjs",
-    "dist": "npm run build && electron-builder --win"
+    "dist": "node tools/build.mjs --release && electron-builder --win --publish never",
+    "test": "node --test tests/*.test.mjs tests/*.test.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
+    "electron-updater": "6.8.9",
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0",
     "electron": "^33.0.0",
     "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0",
     "ws": "^8.18.0"
   },
   "build": {
     "appId": "com.chatrightnow.app",
     "productName": "ChatRightNow",
-    "directories": { "output": "release" },
-    "files": ["src/main/**", "dist/**", "assets/**", "config.json", "LICENSE"],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/main/**",
+      "dist/index.html",
+      "dist/renderer.js",
+      "dist/styles.css",
+      "dist/config.json",
+      "assets/**",
+      "LICENSE"
+    ],
+    "publish": [{ "provider": "github", "owner": "ieun32", "repo": "chat-right-now", "releaseType": "release" }],
+    "artifactName": "ChatRightNow-Setup-${version}-${arch}.${ext}",
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "assets/icon.png"
     },
     "nsis": {

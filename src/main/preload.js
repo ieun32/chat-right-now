@@ -12,9 +12,17 @@ contextBridge.exposeInMainWorld('overlay', {
   setHotspots: (rects) => ipcRenderer.send('overlay:hotspots', rects),
   /** Ask the main process to give this window keyboard focus. */
   focus: () => ipcRenderer.send('overlay:focus'),
-  /** Hide the overlay instantly (bring back with Ctrl+Alt+H or the tray). */
+  /** Hide the overlay instantly (bring back with Ctrl+Alt+V or the tray). */
   hide: () => ipcRenderer.send('overlay:hide'),
+  onVisibility: (cb) => ipcRenderer.on('overlay:visibility', (_event, visible) => cb(visible)),
   quit: () => ipcRenderer.send('overlay:quit'),
   /** Fired when the user hits the global summon hotkey. */
   onToggleControl: (cb) => ipcRenderer.on('overlay:toggle-control', () => cb()),
+  updates: {
+    getState: () => ipcRenderer.invoke('updates:getState'),
+    check: () => ipcRenderer.invoke('updates:check'),
+    download: () => ipcRenderer.invoke('updates:download'),
+    install: () => ipcRenderer.invoke('updates:install'),
+    onState: (cb) => ipcRenderer.on('updates:state', (_event, state) => cb(state)),
+  },
 });

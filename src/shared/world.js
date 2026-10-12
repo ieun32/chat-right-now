@@ -56,7 +56,7 @@ export function clampY(y) {
  * latency shows up as a few tens of ms of position lag, which nobody notices
  * on a walking desktop pet.
  */
-export function makeActor({ id, nick, animal, x = 0.5, y = 0.9, isLocal = false }) {
+export function makeActor({ id, nick, animal, x = 0.5, y = 0.9, isLocal = false, hidden = false }) {
   return {
     id,
     nick,
@@ -69,6 +69,7 @@ export function makeActor({ id, nick, animal, x = 0.5, y = 0.9, isLocal = false 
     until: Infinity,
     facing: 1, // 1 = right, -1 = left
     isLocal,
+    hidden,
     bubbles: [],
   };
 }

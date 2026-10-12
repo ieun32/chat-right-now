@@ -40,6 +40,7 @@ export class Mesh {
     this.session = makeSession(createSessionKey());
     this.peers = new Map(); // peerId -> { pc, dc, meta, helloSent }
     this.handlers = {};     // event -> [cb]
+    this.started = false;
   }
 
   on(event, cb) {
@@ -61,8 +62,12 @@ export class Mesh {
       publicKey: this.identity.publicKeyB64,
       nick: this.self.nick,
       animal: this.self.animal,
+      hidden: this.self.hidden === true,
     });
-    this._status('1명 접속 중');
+    this.started = true;
+    // Visibility may have changed while the initial subscription was pending.
+    this.signaling.updatePresence({ hidden: this.self.hidden === true });
+    this._reconcileStatus();
   }
 
   _status(text) { this._emit(MESH_EVENT.STATUS, text); }
@@ -75,8 +80,9 @@ export class Mesh {
     for (const meta of roster) {
       seen.add(meta.peerId);
       const existing = this.peers.get(meta.peerId);
-      if (existing) { existing.meta = { ...existing.meta, ...meta }; continue; }
-      this._createPeer(meta.peerId, meta, this._isInitiator(meta.peerId));
+      if (existing) existing.meta = { ...existing.meta, ...meta };
+      else this._createPeer(meta.peerId, meta, this._isInitiator(meta.peerId));
+      this._emit(MESH_EVENT.PEER_AVAILABILITY, { id: meta.peerId, hidden: meta.hidden === true });
     }
     for (const [peerId] of this.peers) {
       if (!seen.has(peerId)) this._dropPeer(peerId, 'left room');
@@ -147,11 +153,10 @@ export class Mesh {
   }
 
   _reconcileStatus() {
-    const online = [...this.peers.values()].filter((p) => p.dc && p.dc.readyState === 'open').length;
-    // Count includes me: alone = 1명, one other connected = 2명.
-    if (online > 0) this._status(`${online + 1}명 접속 중`);
-    else if (this.peers.size > 0) this._status('연결 중…');   // someone joining, handshaking
-    else this._status('1명 접속 중');                          // just me — signaling is up
+    const connected = [...this.peers.values()].filter((p) => p.dc?.readyState === 'open');
+    const hidden = connected.filter((p) => p.meta.hidden === true).length + (this.self.hidden === true ? 1 : 0);
+    const online = connected.length + 1 - hidden;
+    this._status(`${online}명 온라인${hidden ? ` · ${hidden}명 오프라인` : ''}`);
   }
 
   _rawSend(peer, obj) {
@@ -172,6 +177,8 @@ export class Mesh {
       animal: this.self.animal,
       x: this.self.x,
       y: this.self.y,
+      weapon: this.self.weapon || 'club',
+      hidden: this.self.hidden === true,
     });
   }
 
@@ -193,12 +200,16 @@ export class Mesh {
     if (!peer) return;
 
     if (m.t === MSG.HELLO) {
-      peer.meta = { ...peer.meta, peerId: m.peerId, publicKey: m.publicKey, nick: m.nick, animal: m.animal };
+      peer.meta = { ...peer.meta, peerId: m.peerId, publicKey: m.publicKey, nick: m.nick, animal: m.animal,
+        hidden: (peer.meta.hidden ?? m.hidden) === true };
       // Their pubkey may only now be known — (re)send our key so agreement can proceed.
       this._sendKey(peerId);
       this._emit(MESH_EVENT.PEER_JOIN, {
         id: peerId, nick: m.nick, animal: m.animal, x: m.x, y: m.y,
+        hidden: (peer.meta.hidden ?? m.hidden) === true,
+        weapon: m.weapon,
       });
+      this._reconcileStatus();
       return;
     }
 
@@ -225,6 +236,12 @@ export class Mesh {
 
   _route(peerId, obj) {
     switch (obj.type) {
+      case MSG.ATTACK:
+      case MSG.STUN:
+      case MSG.JUMP:
+      case MSG.EQUIP:
+        this._emit(MESH_EVENT.PEER_ACTION, { id: peerId, action: obj });
+        break;
       case MSG.MOVE:
       case MSG.SYNC:
         this._emit(MESH_EVENT.PEER_MOVE, { id: peerId, state: obj, sync: obj.type === MSG.SYNC });
@@ -249,9 +266,15 @@ export class Mesh {
     for (const peer of this.peers.values()) this._rawSend(peer, frame);
   }
 
-  sendMove(state) { this._broadcast({ type: MSG.MOVE, ...state }); }
-  sendSync(state) { this._broadcast({ type: MSG.SYNC, ...state }); }
+  sendMove(state) { Object.assign(this.self, { x: state.x, y: state.y }); this._broadcast({ type: MSG.MOVE, ...state }); }
+  sendSync(state) { Object.assign(this.self, { x: state.x, y: state.y }); this._broadcast({ type: MSG.SYNC, ...state }); }
   sendChat(text) { this._broadcast({ type: MSG.CHAT, text }); }
+  sendAction(action) { this._broadcast(action); }
+  setHidden(hidden) {
+    this.self.hidden = hidden === true;
+    if (this.started) this.signaling.updatePresence({ hidden: this.self.hidden });
+    this._reconcileStatus();
+  }
   sendProfile({ nick, animal }) {
     this.self.nick = nick;
     this.self.animal = animal;
@@ -270,6 +293,7 @@ export class Mesh {
   }
 
   async stop() {
+    this.started = false;
     for (const peer of this.peers.values()) {
       this._rawSend(peer, { t: MSG.BYE });
       try { peer.dc && peer.dc.close(); } catch {}

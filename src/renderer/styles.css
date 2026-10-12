@@ -64,6 +64,15 @@ body { background: rgba(0, 0, 0, 0.012); }
 #stage:focus { outline: none; }
 
 .hidden { display: none !important; }
+#inventory { position:fixed; width:240px; height:240px; z-index:5; pointer-events:none; }
+.inventory-ring { position:absolute; inset:25px; border:2px dashed #7c8298; border-radius:50%; }
+.weapon-slot { position:absolute; width:70px; height:70px; border:3px solid #686f85; border-radius:50%; background:#1b1e2b; cursor:pointer; pointer-events:auto; box-shadow:3px 3px 0 #0a0b11; padding:5px; }
+.weapon-slot[data-weapon=club] { left:85px; top:0; }
+.weapon-slot[data-weapon=gun] { left:0; top:147px; }
+.weapon-slot[data-weapon=flame] { right:0; top:147px; }
+.weapon-slot canvas { width:54px; height:54px; image-rendering:pixelated; }
+.weapon-slot span { position:absolute; top:72px; left:50%; transform:translateX(-50%); font-size:11px; color:var(--ink); background:#1b1e2b; padding:3px 5px; }
+.weapon-slot.selected,.weapon-slot:hover,.weapon-slot:focus-visible { border-color:var(--accent); background:#3a3423; }
 
 /* ---- Collapsed floating dock ---- */
 #hud {
@@ -273,3 +282,8 @@ button.primary {
 button.primary:hover { filter: brightness(1.06); }
 button.primary:disabled { opacity: 0.5; cursor: default; box-shadow: var(--shadow-sm); transform: none; }
 .error { color: var(--danger); font-size: 12px; min-height: 16px; margin: 10px 0 0; }
+.update-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12px; color: #a9b0c5; margin-top: 8px; }
+.update-panel [data-app-version] { color: var(--accent); }
+.update-panel [data-update-status] { flex: 1; min-width: 100px; line-height: 1.5; }
+.update-panel button { padding: 6px 10px; background: #2c3145; color: var(--ink); font-size: 12px; }
+.update-panel button:disabled { opacity: .5; cursor: default; }

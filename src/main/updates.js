@@ -1,6 +1,6 @@
 // The installer and latest.yml are published together on GitHub Releases.
-function createUpdates({ app, updater, publish = () => {} }) {
-  let state = { version: app.getVersion(), status: app.isPackaged ? 'idle' : 'development', percent: 0 };
+function createUpdates({ app, updater, publish = () => {}, manualInstall = false, openDownload = async () => {} }) {
+  let state = { version: app.getVersion(), status: app.isPackaged ? 'idle' : 'development', percent: 0, manualInstall };
   const set = patch => { state = { ...state, ...patch }; publish({ ...state }); };
   updater.autoDownload = false;
   updater.autoInstallOnAppQuit = false;
@@ -22,11 +22,15 @@ function createUpdates({ app, updater, publish = () => {} }) {
     },
     async download() {
       if (state.status !== 'available') return;
+      if (manualInstall) {
+        try { await openDownload(); } catch { failed(); }
+        return;
+      }
       set({ status: 'downloading', percent: 0 });
       try { await updater.downloadUpdate(); } catch { failed(); }
     },
     install() {
-      if (state.status !== 'ready') return;
+      if (manualInstall || state.status !== 'ready') return;
       set({ status: 'installing' });
       // Explicitly requested by the user; never install on an ordinary quit.
       try { updater.quitAndInstall(false, true); } catch { failed(); }

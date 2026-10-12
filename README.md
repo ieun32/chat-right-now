@@ -1,16 +1,25 @@
 # ChatRightNow
 
-A Windows desktop app where pixel-art animal characters roam your wallpaper and
+A Windows and macOS desktop app where pixel-art animal characters roam your wallpaper and
 **people who are online right now** chat with each other in real time via speech
 bubbles.
 
 ## Download and updates
 
-Windows installers are distributed through
+Desktop installers are distributed through
 [GitHub Releases](https://github.com/ieun32/chat-right-now/releases/latest).
-Choose `ChatRightNow-Setup-<version>-x64.exe` from the release assets. The link
-becomes available after the first release is published; GitHub's source-code
-ZIP is not an installer.
+Windows: choose `ChatRightNow-Setup-<version>-x64.exe`.
+macOS (from v0.3.0): choose `ChatRightNow-<version>-mac-universal.dmg`, open it,
+and drag ChatRightNow into Applications. The Universal app supports both Intel
+and Apple Silicon Macs. macOS 11 or newer is required. GitHub's source-code
+ZIP is not an installer. Mac assets appear once v0.3.0 is published.
+
+The current Mac build is not Developer ID signed or notarized. macOS may block
+its first launch; if you trust this release, use System Settings > Privacy &
+Security > Open Anyway after attempting to open it. Do not disable Gatekeeper.
+Mac builds check for updates at startup, but the download button opens GitHub
+Releases for manual installation. In-app installation requires Apple code
+signing and is not enabled in this build.
 
 Version **0.2.0** introduces the updater. Install this version manually once if
 you are on 0.1.0. Installed builds check the latest stable GitHub release when
@@ -58,13 +67,15 @@ Switch with a single line in `config.json` (`"signaling"`). The adapter interfac
 
 ## Running
 
-Use Windows, Git, and Node.js with npm. Start with local signaling for development;
+Use Windows or macOS, Git, and Node.js with npm. Start with local signaling for development;
 no Supabase account or production credentials are needed.
 
 ```powershell
 npm ci
 Copy-Item config.example.json config.json
 ```
+
+On macOS, use `cp config.example.json config.json` for the copy step.
 
 In `config.json`, change `"signaling"` to `"local"`, then run:
 
@@ -87,6 +98,7 @@ Packaged build:
 
 ```bash
 npm run dist                 # Windows NSIS installer via electron-builder
+npm run dist:mac             # Universal DMG + ZIP; run on macOS
 ```
 
 Packaging is for local testing or authorized releases under the [license](LICENSE).
@@ -148,7 +160,7 @@ The repository owner reviews and merges accepted PRs. Contributors do not need
 write access to submit a PR, and submitting one does not grant merge access.
 GitHub repository rules enforce permissions separately from these instructions.
 
-For bug reports, include reproduction steps, expected/actual behavior, Windows
+For bug reports, include reproduction steps, expected/actual behavior, OS
 and app versions, and sanitized logs. Do not post credentials or private data.
 For a vulnerability, use GitHub's private vulnerability reporting option if it
 is enabled; otherwise request a private contact channel without publishing
@@ -187,7 +199,12 @@ Gameplay uses peer-reported state and is intended for casual play, not a
 server-authoritative competitive game. All participants need this version to
 see the new gameplay and availability states.
 
-## Publishing a Windows release (maintainer)
+On macOS, replace **Ctrl+Alt** in the shortcuts above with **Command+Option**
+(`⌘⌥`). The menu bar icon opens the app menu; the Dock icon focuses the overlay.
+Command+C/V/A and other standard editing shortcuts work in the chat input.
+The overlay leaves space for the macOS menu bar and Dock.
+
+## Publishing a desktop release (maintainer)
 
 1. Set repository Actions secrets `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`
    to the intended public service's URL and client publishable/legacy anon key.
@@ -196,9 +213,11 @@ see the new gameplay and availability states.
    and includes only the required client settings.
 2. Update `package.json` and `package-lock.json` together with
    `npm version <version> --no-git-tag-version`, then commit the release changes.
-3. Push a matching tag such as `v0.2.0`, or run **Windows release** in Actions.
-   The workflow tests and builds on Windows, then publishes the installer,
-   `.exe.blockmap`, and `latest.yml` together on GitHub Releases.
+3. Merge the release PR into main, then push a matching tag such as `v0.3.0`,
+   or run **Desktop release** from main in Actions. The workflow tests and
+   builds on Windows and macOS, then publishes both platforms together:
+   Windows EXE, Mac Universal DMG/ZIP, blockmaps, `latest.yml`, and `latest-mac.yml`.
+   A failed platform build prevents publication of a partial release.
 4. Verify the download and install the release on a test machine. Keep the
    release public and stable for automatic update discovery. Tags alone and
    draft releases do not make an update available.
@@ -209,6 +228,18 @@ creates release files without uploading. Upload the matching installer,
 blockmap, and `latest.yml` together; do not mix metadata from different builds.
 GitHub upload credentials belong in the release job, never in the app.
 The current local build is unsigned; Windows may show a publisher warning.
+Mac builds use a local ad-hoc signature for Apple Silicon execution, but have
+no Apple Developer ID certificate or notarization. The packaging hook verifies
+the local signature after merging the two architectures.
+To enable native Mac update installation in a future release, configure
+Developer ID signing and Apple notarization in CI, then remove the Mac
+`manualInstall` restriction in `src/main/main.js` after validating a signed
+version-to-version update on a Mac. Never commit certificates or signing secrets.
+
+PR checks run unit tests and the Electron renderer smoke test on Windows and
+macOS, and verify Mac Universal packaging using development configuration.
+These test packages are not published. A real Mac still needs manual checks
+for desktop click-through, menu bar/Dock, Spaces, global shortcuts, and first launch.
 
 Run `npm test` for state/geometry/updater tests. On Windows,
 `npx electron tools/smoke-electron.cjs` additionally exercises two real Electron

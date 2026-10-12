@@ -91,6 +91,11 @@ app.whenReady().then(async()=>{
   a.webContents.send('updates:state',{version:'0.2.0',status:'available',latestVersion:'0.3.0'});
   await read(a,'document.getElementById("hud-toggle").click()');await capture(a,'qa-update');
   assert.equal(await read(a,'document.querySelector("[data-update-action]").textContent'),'새 버전 다운로드');
+  if (process.platform === 'darwin') {
+    assert.ok(await read(a, 'document.getElementById("hud-hide").title.includes("⌘⌥V")'));
+    a.webContents.send('updates:state', {version:'0.3.0',status:'available',latestVersion:'0.4.0',manualInstall:true});
+    await until(a, 'document.querySelector("[data-update-action]").textContent === "Mac 다운로드 페이지"', 'Mac manual update UI');
+  }
   console.log('PASS: 2-peer WebRTC, 3 weapons, stun/recovery, running/jump, hide/show, update UI.');
 }).catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>{
   for(const win of windows)win.destroy();

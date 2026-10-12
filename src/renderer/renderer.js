@@ -65,6 +65,14 @@ let gameplay;
 
 // ---------------------------------------------------------------- boot
 (async function boot() {
+  if (window.overlay?.platform === 'darwin') {
+    document.querySelectorAll('[title]').forEach(el => {
+      el.title = el.title.replaceAll('Ctrl+Alt+', '⌘⌥');
+    });
+    document.querySelectorAll('.hint').forEach(el => {
+      el.innerHTML = el.innerHTML.replaceAll('Ctrl+Alt+', '⌘⌥');
+    });
+  }
   wireUpdates();
   state.config = await fetch('./config.json').then((r) => r.json());
   await loadSprites();

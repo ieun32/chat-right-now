@@ -5,6 +5,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('overlay', {
+  platform: process.platform,
   /** Tell the main process whether the cursor is currently over interactive UI. */
   setInteractive: (interactive) => ipcRenderer.send('overlay:set-interactive', !!interactive),
   /** Publish clickable hotspot rects (CSS px, window-relative); main polls the

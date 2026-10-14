@@ -47,12 +47,12 @@ not query releases. The tray also shows the version and an update-check action.
 
 ```
 src/
-  shared/    crypto · protocol · world (dead reckoning)   pure logic, easy to test
+  shared/    crypto · protocol · world (dead reckoning) · tower (seed-derived jump map)   pure logic, easy to test
   net/       signaling (adapter) · mesh (WebRTC full mesh)
   main/      Electron main (transparent click-through overlay) · preload
-  renderer/  world loop · input · chat · sprite drawing
-tools/       gen-sprites · build (esbuild) · dev · dev-signal-server (local WS)
-assets/      sprites.png / sprites.json (regenerate with npm run gen:sprites)
+  renderer/  world loop · input · chat · sprite drawing · tower (follow-cam platformer)
+tools/       gen-sprites · gen-tiles · build (esbuild) · dev · dev-signal-server (local WS)
+assets/      sprites.png + sprites.json (npm run gen:sprites) · tiles.png + tiles.json (npm run gen:tiles)
 ```
 
 ## Signaling backends
@@ -203,6 +203,37 @@ On macOS, replace **Ctrl+Alt** in the shortcuts above with **Command+Option**
 (`⌘⌥`). The menu bar icon opens the app menu; the Dock icon focuses the overlay.
 Command+C/V/A and other standard editing shortcuts work in the chat input.
 The overlay leaves space for the macOS menu bar and Dock.
+
+## 인내의 숲 — jump-map mode
+
+Tick **🌲 인내의 숲 (점프맵)** on the join card to turn the room into a vertical
+"Tower of Hell"-style climb instead of the desktop pet lounge.
+
+- **The room code is the map seed (salt).** It is hashed (FNV-1a) into a seed for
+  a deterministic PRNG, so everyone who types the same code generates a
+  *byte-identical* tower of platforms. Because the layout is derived, not
+  downloaded, it still rides the serverless P2P model — nothing about the map
+  ever crosses the wire, only each climber's live position.
+- **Per-player follow-camera.** You are anchored ~62% down your own viewport and
+  the tower scrolls as you climb; the background stays transparent over your
+  desktop. Everyone sees the same tower through their own camera.
+- **Controls:** ←→ / A D to move, **Space / ↑ / W** to jump, **F** to attack,
+  **1 / 2 / 3** to switch weapon, **Enter** to chat.
+- **Live ranking (hold Tab).** Ranks everyone present by the highest floor they
+  have reached: the top 10, and — if you are below the cut — a separator plus
+  your own row, so you always see where you stand.
+- **Knockback.** Platforms are one-way (you can jump up through them). A hit from
+  the dokkaebi club / gun / flamethrower shoves you in the attacker's facing
+  direction with a small upward pop, and **only an attacker inside your viewport
+  can knock you.** If the shove carries you past a platform's edge, you fall and
+  lose height — so a well-placed club near a ledge is how you set a rival back.
+
+Pure map generation and physics live in `src/shared/tower.js` (unit-tested in
+`tests/tower.test.mjs`); the follow-camera, networking cadence and drawing live
+in `src/renderer/tower.js`. The tileset is procedurally generated, transparent
+background, by `npm run gen:tiles`. End-to-end coverage (two peers over real
+WebRTC: identical seed map, climbing, in-viewport knockback, live ranking) is in
+`tools/smoke-tower.cjs` (`npx electron tools/smoke-tower.cjs`).
 
 ## Publishing a desktop release (maintainer)
 

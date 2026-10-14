@@ -13,6 +13,7 @@ import {
 import { loadSprites, animals, drawActor, drawPreview, setViewScale, getViewScale } from './render.js';
 import { wireUpdates } from './updates.js';
 import { createGameplay } from './gameplay.js';
+import { createTower } from './tower.js';
 import { RUN_MULTIPLIER, stunned, WEAPONS } from '../shared/combat.js';
 
 const SCALE_KEY = 'crn.viewScale';
@@ -51,6 +52,7 @@ const state = {
   chatOpen: false,
   joined: false,
   hidden: false,
+  towerMode: false,  // "인내의 숲" jump-map room
   sprinting: false,
   inventoryOpen: false,
   lastSpeed: 1,
@@ -62,6 +64,7 @@ const state = {
   interactive: null,  // last value pushed to the main process
 };
 let gameplay;
+let tower;
 
 // ---------------------------------------------------------------- boot
 (async function boot() {
@@ -77,6 +80,7 @@ let gameplay;
   state.config = await fetch('./config.json').then((r) => r.json());
   await loadSprites();
   gameplay = createGameplay({ state, recomputeDirection, pushHotspots });
+  tower = createTower({ state });
   await ensureFont();
   loadSavedScale();
   buildAnimalPicker();
@@ -119,6 +123,11 @@ function randomRoom() {
 function wireJoinScreen() {
   $('room').value = randomRoom();
   $('dice').onclick = () => { $('room').value = randomRoom(); };
+  // Jump-map toggle: the room code becomes the tower seed; reveal its hint.
+  $('tower-mode').addEventListener('change', (e) => {
+    $('tower-hint').classList.toggle('hidden', !e.target.checked);
+    $('room-label').textContent = e.target.checked ? '방 코드 (맵 시드)' : '방 코드';
+  });
   $('enter').onclick = join;
   $('room').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
   $('nick').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
@@ -134,6 +143,8 @@ async function leaveRoom() {
   if (!state.joined || leaving) return;
   leaving = true;
   gameplay?.close();
+  tower?.stop();
+  state.towerMode = false;
   const mesh = state.mesh;
   state.mesh = null;
   try { await mesh?.stop(); } catch (err) { console.error('[leave]', err); }
@@ -197,6 +208,7 @@ async function join() {
   if (!room) return showJoinError('방 코드를 입력하세요.');
   showJoinError('');
   $('enter').disabled = true;
+  state.towerMode = $('tower-mode').checked;
 
   const spawn = { x: 0.2 + Math.random() * 0.6, y: 0.78 + Math.random() * 0.16 };
   const self = { peerId: state.peerId, nick, animal: state.selectedAnimal, x: spawn.x, y: spawn.y, hidden: state.hidden };
@@ -218,6 +230,7 @@ async function join() {
   }
 
   state.joined = true;
+  if (state.towerMode) tower.start(room); // seed the tower from the room code
   $('join').classList.add('hidden');
   $('hud').classList.remove('hidden');
   $('hud-room').textContent = room;
@@ -248,12 +261,17 @@ function wireMesh(mesh) {
     if (typeof x === 'number') a.x = clampX(x);
     if (typeof y === 'number') a.y = clampY(y);
   });
-  mesh.on(MESH_EVENT.PEER_LEAVE, ({ id }) => state.world.delete(id));
+  mesh.on(MESH_EVENT.PEER_LEAVE, ({ id }) => { state.world.delete(id); tower?.removePeer(id); });
   mesh.on(MESH_EVENT.PEER_MOVE, ({ id, state: st }) => {
+    if (state.towerMode) return; // tower rooms move via PEER_TOWER, not dead reckoning
     const actor = ensureActor(id);
     if (!stunned(actor)) applyMove(actor, st);
   });
-  mesh.on(MESH_EVENT.PEER_ACTION, ({ id, action }) => gameplay?.receive(id, action));
+  mesh.on(MESH_EVENT.PEER_ACTION, ({ id, action }) => {
+    if (state.towerMode) tower?.receive(id, action);
+    else gameplay?.receive(id, action);
+  });
+  mesh.on(MESH_EVENT.PEER_TOWER, ({ id, state: st }) => { ensureActor(id); tower?.receiveState(id, st); });
   mesh.on(MESH_EVENT.PEER_CHAT, ({ id, text }) => addBubble(ensureActor(id), sanitizeText(text, WORLD.MAX_CHAT_LEN)));
   mesh.on(MESH_EVENT.PEER_PROFILE, ({ id, nick, animal }) => {
     const a = ensureActor(id); a.nick = nick; a.animal = animal;
@@ -303,6 +321,7 @@ function typingInField(e) {
 
 function hideOverlay() {
   gameplay?.close();
+  tower?.clearInput();
   state.keys = { left: false, right: false, up: false, down: false };
   if (state.chatOpen) closeChat();
   recomputeDirection();
@@ -320,6 +339,11 @@ window.addEventListener('keydown', (e) => {
   }
   if (typingInField(e)) return; // never hijack keys meant for a text field
   if (e.ctrlKey || e.altKey || e.metaKey) return;
+  if (state.towerMode && state.joined) {
+    if (e.key === 'Enter' && !state.chatOpen) { e.preventDefault(); openChat(); return; }
+    tower?.keydown(e); // movement / jump / attack / weapon / Tab-ranking
+    return; // the tower owns in-world keys; never fall through to pet controls
+  }
   if (gameplay?.keydown(e)) return;
   if (e.key === 'Enter' && state.joined && !state.chatOpen) { e.preventDefault(); openChat(); return; }
   if (!state.joined || state.chatOpen || state.inventoryOpen || stunned(state.local)) return;
@@ -332,6 +356,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => {
   if (e.key === 'Shift') { state.sprinting = false; recomputeDirection(); }
   if (typingInField(e)) return;
+  if (state.towerMode && state.joined) { tower?.keyup(e); return; }
   const dir = KEYMAP[e.key];
   if (dir && state.keys[dir]) { state.keys[dir] = false; recomputeDirection(); }
 });
@@ -339,6 +364,7 @@ window.addEventListener('keyup', (e) => {
 window.addEventListener('blur', () => {
   state.sprinting = false;
   state.keys = { left: false, right: false, up: false, down: false };
+  tower?.clearInput();
   if (state.joined && !state.chatOpen) recomputeDirection();
 });
 
@@ -348,6 +374,7 @@ window.overlay?.onVisibility((visible) => {
   state.hidden = !visible;
   if (!visible) {
     gameplay?.close();
+    tower?.clearInput();
     state.sprinting = false;
     state.keys = { left: false, right: false, up: false, down: false };
     state.lastDir = { dx: 0, dy: 0 };
@@ -452,18 +479,23 @@ resize();
 let lastHotspotPush = 0;
 function loop() {
   const now = Date.now();
-  gameplay?.tick();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  state.boxes.clear();
+  for (const actor of state.world.values()) pruneBubbles(actor, now);
 
-  // Draw far characters first (higher on screen = smaller y = behind).
-  const actors = [...state.world.values()].sort((a, b) => posAt(a, now).y - posAt(b, now).y);
-  for (const actor of actors) {
-    pruneBubbles(actor, now);
-    const box = drawActor(ctx, actor, canvas.width, canvas.height, dpr, now);
-    state.boxes.set(actor.id, box);
+  if (state.towerMode && tower?.active()) {
+    // Jump-map: the tower controller owns physics, the follow-camera and drawing.
+    tower.tick(now, ctx, canvas.width, canvas.height, dpr);
+  } else {
+    gameplay?.tick();
+    state.boxes.clear();
+    // Draw far characters first (higher on screen = smaller y = behind).
+    const actors = [...state.world.values()].sort((a, b) => posAt(a, now).y - posAt(b, now).y);
+    for (const actor of actors) {
+      const box = drawActor(ctx, actor, canvas.width, canvas.height, dpr, now);
+      state.boxes.set(actor.id, box);
+    }
+    // Republish character hotspots as they move (throttled; deduped downstream).
+    if (now - lastHotspotPush > 80) { lastHotspotPush = now; pushHotspots(); }
   }
-  // Republish character hotspots as they move (throttled; deduped downstream).
-  if (now - lastHotspotPush > 80) { lastHotspotPush = now; pushHotspots(); }
   requestAnimationFrame(loop);
 }

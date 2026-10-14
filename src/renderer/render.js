@@ -7,7 +7,11 @@ import { WEAPONS, stunned, jumpHeight, JUMP_MS } from '../shared/combat.js';
 
 let sheet = null; // { img, atlas }
 let combatSheet = null;
+let tileSheet = null; // jump-map tileset (assets/tiles.png)
 let viewScale = 1; // per-viewer size multiplier on top of WORLD.SPRITE_SCALE
+
+/** Column index of each tile in tiles.png (see tools/gen-tiles.mjs). */
+export const TILE = { leftCap: 0, middle: 1, rightCap: 2, single: 3, goal: 4, ground: 5 };
 
 /** Local-only render size multiplier (does not affect other peers' screens). */
 export function setViewScale(v) {
@@ -29,6 +33,12 @@ export async function loadSprites() {
     combatSheet.onload = resolve; combatSheet.onerror = reject;
     combatSheet.src = '../assets/combat.png';
   });
+  tileSheet = new Image();
+  await new Promise((resolve, reject) => {
+    tileSheet.onload = resolve;
+    tileSheet.onerror = () => reject(new Error('tiles.png failed to load (run `npm run gen:tiles`)'));
+    tileSheet.src = '../assets/tiles.png';
+  });
   return sheet;
 }
 
@@ -36,15 +46,19 @@ export function animals() {
   return sheet ? sheet.atlas.animals : [];
 }
 
-function frameFor(actor, now) {
+function frameFor(actor, now, ov) {
   const { atlas } = sheet;
-  const moving = isMoving(actor, now);
-  const jumping = jumpHeight(actor, now) > 0;
-  const running = Math.hypot(actor.vx / WORLD.SPEED_X, actor.vy / WORLD.SPEED_Y) > 1.2;
-  const key = stunned(actor, now) ? 'stunned' : jumping ? 'jump' : moving ? (running ? 'run' : 'walk') : 'idle';
+  // `ov` (tower mode) forces the animation: { key, phase } where phase picks the
+  // jump column (0 rising … 2 falling) directly instead of using jump timing.
+  const moving = ov ? ov.key === 'walk' || ov.key === 'run' : isMoving(actor, now);
+  const jumping = ov ? ov.key === 'jump' : jumpHeight(actor, now) > 0;
+  const running = ov ? ov.key === 'run' : Math.hypot(actor.vx / WORLD.SPEED_X, actor.vy / WORLD.SPEED_Y) > 1.2;
+  const key = ov ? ov.key : stunned(actor, now) ? 'stunned' : jumping ? 'jump' : moving ? (running ? 'run' : 'walk') : 'idle';
   const fps = key === 'stunned' ? 5 : running ? 12 : moving ? WORLD.WALK_FPS : WORLD.IDLE_FPS;
   const cols = atlas.cols[key];
-  const col = jumping && key === 'jump' ? cols[Math.min(2, Math.floor((now - actor.jumpStarted) / JUMP_MS * 3))] : cols[Math.floor((now / 1000) * fps) % cols.length];
+  const col = key === 'jump'
+    ? cols[ov ? Math.min(2, Math.max(0, ov.phase ?? 1)) : Math.min(2, Math.floor((now - actor.jumpStarted) / JUMP_MS * 3))]
+    : cols[Math.floor((now / 1000) * fps) % cols.length];
   let row = atlas.animals.indexOf(actor.animal);
   if (row < 0) row = 0;
   return { sx: col * atlas.frameW, sy: row * atlas.frameH, w: atlas.frameW, h: atlas.frameH };
@@ -66,20 +80,22 @@ export function drawPreview(ctx, animal, scale = 2) {
  * @returns {{x:number,y:number,w:number,h:number}} the sprite's screen-space box
  *          (CSS px), so the caller can hit-test the cursor against it.
  */
-export function drawActor(ctx, actor, canvasW, canvasH, dpr, now) {
+export function drawActor(ctx, actor, canvasW, canvasH, dpr, now, screen) {
   const { img } = sheet;
-  const f = frameFor(actor, now);
+  const f = frameFor(actor, now, screen && { key: screen.anim || 'idle', phase: screen.phase });
   const scale = WORLD.SPRITE_SCALE * viewScale;
   const drawW = f.w * scale;
   const drawH = f.h * scale;
 
-  const p = posAt(actor, now);
   const cssW = canvasW / dpr;
   const cssH = canvasH / dpr;
-  const feetX = p.x * cssW;
-  const feetY = p.y * cssH;
+  // Tower mode passes explicit screen-space feet (follow-camera); pet-chat mode
+  // derives them from the normalized dead-reckoned position.
+  const p = screen ? { x: screen.feetX / cssW, y: screen.feetY / cssH } : posAt(actor, now);
+  const feetX = screen ? screen.feetX : p.x * cssW;
+  const feetY = screen ? screen.feetY : p.y * cssH;
   const left = feetX - drawW / 2;
-  const lift = jumpHeight(actor, now) * 55 * viewScale;
+  const lift = screen ? 0 : jumpHeight(actor, now) * 55 * viewScale;
   const top = feetY - drawH - lift;
 
   if (lift > 0) {
@@ -103,7 +119,7 @@ export function drawActor(ctx, actor, canvasW, canvasH, dpr, now) {
   if (actor.weapon && !actor.hidden && !stunned(actor, now)) {
     drawCombat(ctx, 0, Object.keys(WEAPONS).indexOf(actor.weapon), feetX + actor.facing * drawW * .25, top + drawH * .6, 30 * viewScale, 30 * viewScale, dpr, actor.facing);
   }
-  if (actor.attack && now - actor.attack.at < WEAPONS[actor.attack.weapon].duration) {
+  if (!screen && actor.attack && now - actor.attack.at < WEAPONS[actor.attack.weapon].duration) {
     const attack = actor.attack, w = WEAPONS[attack.weapon], t = (now-attack.at)/w.duration;
     const originX = attack.x * cssW, originY = attack.y * cssH - drawH*.5;
     const effectW = w.range * cssW;
@@ -131,6 +147,20 @@ export function drawWeaponPreview(ctx, weapon) {
   ctx.clearRect(0,0,64,64);
   drawCombat(ctx,0,Object.keys(WEAPONS).indexOf(weapon),32,32,64,64);
 }
+
+/** Draw one 32x32 tile from tiles.png at a screen rect (top-left), for the tower. */
+export function drawTile(ctx, col, x, y, w, h, dpr = 1) {
+  if (!tileSheet) return;
+  ctx.save(); ctx.scale(dpr, dpr); ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(tileSheet, col * 32, 0, 32, 32, x, y, w, h);
+  ctx.restore();
+}
+
+/** Tower attack effect / held weapon, placed at an explicit screen point. */
+export function drawWeaponFx(ctx, row, col, cx, cy, w, h, dpr = 1, facing = 1) {
+  drawCombat(ctx, row, col, cx, cy, w, h, dpr, facing);
+}
+export function weaponFxRow(weapon) { return WEAPONS[weapon]?.row ?? 0; }
 
 /** A neutral gray Wi-Fi-off badge, above the name and below chat bubbles. */
 function drawOfflineIcon(ctx, cx, cy, dpr) {

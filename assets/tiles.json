@@ -1,0 +1,12 @@
+{
+  "frameW": 32,
+  "frameH": 32,
+  "tiles": {
+    "leftCap": 0,
+    "middle": 1,
+    "rightCap": 2,
+    "single": 3,
+    "goal": 4,
+    "ground": 5
+  }
+}

@@ -42,6 +42,20 @@
     <button id="hud-toggle" class="dock-fab" title="설정" aria-label="설정 메뉴">⚙</button>
   </div>
 
+  <!-- Jump-map ("인내의 숲") HUD: altitude + current weapon. -->
+  <div id="tower-hud" class="hidden">
+    <span id="tower-floor" class="t-floor">0층</span>
+    <span class="t-sep">·</span>
+    <span id="tower-weapon" class="t-weapon">도깨비방망이</span>
+    <span class="t-keys muted">Tab 랭킹</span>
+  </div>
+
+  <!-- Live ranking, shown while Tab is held: top 10 + your own row. -->
+  <div id="tower-rank" class="hidden" role="status" aria-label="실시간 랭킹">
+    <div class="rank-head"><strong>🏔 랭킹</strong><span id="tower-rank-total" class="muted"></span></div>
+    <ol id="tower-rank-list"></ol>
+  </div>
+
   <!-- Chat input, revealed with Enter -->
   <form id="chatbar" class="hidden" autocomplete="off">
     <input id="chat-input" maxlength="200" placeholder="메시지 입력 후 Enter…" />
@@ -60,11 +74,17 @@
       <label>캐릭터</label>
       <div id="animals" class="animals"></div>
 
-      <label>방 코드</label>
+      <label id="room-label">방 코드</label>
       <div class="room-row">
         <input id="room" maxlength="24" placeholder="예: FROG-42" />
         <button id="dice" type="button" title="랜덤 코드">🎲</button>
       </div>
+
+      <label class="mode-toggle" title="같은 코드를 입력한 사람들은 똑같은 탑을 오릅니다">
+        <input id="tower-mode" type="checkbox" />
+        <span>🌲 인내의 숲 (점프맵)</span>
+      </label>
+      <p id="tower-hint" class="mode-hint muted hidden">방 코드가 맵 시드예요 — 같은 코드 = 같은 탑. ←→ 이동 · Space 점프 · F 공격 · Tab 랭킹</p>
 
       <button id="enter" class="primary">입장</button>
       <p id="join-error" class="error"></p>

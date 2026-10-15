@@ -281,6 +281,79 @@ button.primary {
 }
 button.primary:hover { filter: brightness(1.06); }
 button.primary:disabled { opacity: 0.5; cursor: default; box-shadow: var(--shadow-sm); transform: none; }
+/* ---- Jump-map mode toggle (join card) ---- */
+.mode-toggle {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 0 !important;
+  padding: 10px 12px;
+  border: 3px solid var(--line);
+  background: #12141d;
+  color: var(--ink) !important;
+  font-size: 13px !important;
+  letter-spacing: 0 !important;
+  cursor: pointer;
+}
+.mode-toggle input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.mode-toggle:hover { background: #1a1d2a; }
+.mode-hint { font-size: 11px !important; margin: 8px 0 0 !important; line-height: 1.6; }
+
+/* ---- Jump-map HUD (altitude + weapon) ---- */
+#tower-hud {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border: 3px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+  font-size: 14px;
+  z-index: 6;
+}
+#tower-hud .t-floor { color: var(--accent); font-weight: 700; }
+#tower-hud .t-weapon { color: var(--accent-2); }
+#tower-hud .t-sep { color: #4a5068; }
+#tower-hud .t-keys { font-size: 11px; margin-left: 6px; }
+
+/* ---- Live ranking panel (held while Tab is down) ---- */
+#tower-rank {
+  position: fixed;
+  top: 60px;
+  right: 16px;
+  width: 232px;
+  padding: 12px 14px;
+  border: 3px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  z-index: 7;
+}
+#tower-rank .rank-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+#tower-rank .rank-head strong { font-size: 14px; color: var(--accent); letter-spacing: 0.5px; }
+#tower-rank .rank-head .muted { color: #8b93aa; font-size: 11px; }
+#tower-rank ol { list-style: none; margin: 0; padding: 0; }
+#tower-rank li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  font-size: 13px;
+  border-top: 1px solid #2a2f42;
+}
+#tower-rank li:first-child { border-top: none; }
+#tower-rank li .rk { width: 22px; text-align: right; color: #8b93aa; font-weight: 700; }
+#tower-rank li .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tower-rank li .ht { color: var(--accent-2); }
+#tower-rank li.me { background: #2a2c18; margin: 0 -6px; padding: 4px 8px; }
+#tower-rank li.me .nm { color: var(--accent); font-weight: 700; }
+#tower-rank li.sep { justify-content: center; color: #4a5068; padding: 2px; border-top: none; }
+
 .error { color: var(--danger); font-size: 12px; min-height: 16px; margin: 10px 0 0; }
 .update-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12px; color: #a9b0c5; margin-top: 8px; }
 .update-panel [data-app-version] { color: var(--accent); }

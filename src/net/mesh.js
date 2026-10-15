@@ -246,6 +246,9 @@ export class Mesh {
       case MSG.SYNC:
         this._emit(MESH_EVENT.PEER_MOVE, { id: peerId, state: obj, sync: obj.type === MSG.SYNC });
         break;
+      case MSG.TOWER:
+        this._emit(MESH_EVENT.PEER_TOWER, { id: peerId, state: obj });
+        break;
       case MSG.CHAT:
         this._emit(MESH_EVENT.PEER_CHAT, { id: peerId, text: obj.text });
         break;
@@ -270,6 +273,7 @@ export class Mesh {
   sendSync(state) { Object.assign(this.self, { x: state.x, y: state.y }); this._broadcast({ type: MSG.SYNC, ...state }); }
   sendChat(text) { this._broadcast({ type: MSG.CHAT, text }); }
   sendAction(action) { this._broadcast(action); }
+  sendTower(state) { Object.assign(this.self, { x: state.x }); this._broadcast({ type: MSG.TOWER, ...state }); }
   setHidden(hidden) {
     this.self.hidden = hidden === true;
     if (this.started) this.signaling.updatePresence({ hidden: this.self.hidden });

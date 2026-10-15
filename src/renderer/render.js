@@ -83,7 +83,8 @@ export function drawPreview(ctx, animal, scale = 2) {
 export function drawActor(ctx, actor, canvasW, canvasH, dpr, now, screen) {
   const { img } = sheet;
   const f = frameFor(actor, now, screen && { key: screen.anim || 'idle', phase: screen.phase });
-  const scale = WORLD.SPRITE_SCALE * viewScale;
+  const actorScale = viewScale * (screen?.scale ?? 1);
+  const scale = WORLD.SPRITE_SCALE * actorScale;
   const drawW = f.w * scale;
   const drawH = f.h * scale;
 
@@ -117,7 +118,7 @@ export function drawActor(ctx, actor, canvasW, canvasH, dpr, now, screen) {
   ctx.restore();
 
   if (actor.weapon && !actor.hidden && !stunned(actor, now)) {
-    drawCombat(ctx, 0, Object.keys(WEAPONS).indexOf(actor.weapon), feetX + actor.facing * drawW * .25, top + drawH * .6, 30 * viewScale, 30 * viewScale, dpr, actor.facing);
+    drawCombat(ctx, 0, Object.keys(WEAPONS).indexOf(actor.weapon), feetX + actor.facing * drawW * .25, top + drawH * .6, 30 * actorScale, 30 * actorScale, dpr, actor.facing);
   }
   if (!screen && actor.attack && now - actor.attack.at < WEAPONS[actor.attack.weapon].duration) {
     const attack = actor.attack, w = WEAPONS[attack.weapon], t = (now-attack.at)/w.duration;
@@ -198,7 +199,7 @@ function drawNameTag(ctx, nick, cx, topY, dpr) {
   if (!nick) return;
   ctx.save();
   ctx.scale(dpr, dpr);
-  ctx.font = '12px "DOSMyungjo", monospace';
+  ctx.font = '12px "Segoe UI", sans-serif';
   ctx.textAlign = 'center';
   const w = ctx.measureText(nick).width + 12;
   const y = topY - 4;
@@ -214,7 +215,7 @@ function drawBubbles(ctx, actor, cx, topY, dpr, now) {
   if (!actor.bubbles || !actor.bubbles.length) return;
   ctx.save();
   ctx.scale(dpr, dpr);
-  ctx.font = '14px "DOSMyungjo", monospace';
+  ctx.font = '14px "Segoe UI", sans-serif';
   ctx.textAlign = 'center';
   const maxW = 240;
   let y = topY - 20; // stack upward above the name tag

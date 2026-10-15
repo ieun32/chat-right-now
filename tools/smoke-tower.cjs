@@ -61,6 +61,9 @@ app.whenReady().then(async () => {
     windows.push(win); win.webContents.on('console-message', (_e, level, msg) => { if (level >= 3) console.error(msg); });
     await win.loadURL(`http://127.0.0.1:${server.address().port}/`);
     await until(win, '!!window.__qa?.tower() && document.querySelectorAll("#animals .slot").length === 8', 'ready');
+    await read(win, `window.__clears=0; const original=CanvasRenderingContext2D.prototype.clearRect; CanvasRenderingContext2D.prototype.clearRect=function(...args){if(this.canvas.id==='stage')window.__clears++;return original.apply(this,args)};void 0;`);
+    await wait(250);
+    assert.equal(await read(win, 'window.__clears'), 0, 'join screen does not redraw the desktop canvas');
     await read(win, `document.body.style.background='#252936';document.getElementById('room').value='TOWER';document.getElementById('nick').value='${i ? 'Rabbit' : 'Cat'}';window.__qa.state.selectedAnimal='${i ? 'rabbit' : 'cat'}';document.getElementById('tower-mode').click();`);
     await read(win, `document.getElementById('enter').click()`);
     await until(win, 'window.__qa.state.joined && window.__qa.state.towerMode', 'join');
@@ -69,6 +72,23 @@ app.whenReady().then(async () => {
   await until(a, 'window.__qa.state.world.size===2 && [...window.__qa.state.mesh.peers.values()].every(p=>p.dc?.readyState==="open")', 'mesh');
   await until(b, 'window.__qa.state.world.size===2', 'other mesh');
   await wait(600);
+
+  const viewport = await read(a, `(() => {const r=document.getElementById('stage').getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height,bottom:innerHeight-r.bottom}})()`);
+  assert.equal(viewport.w, 360);
+  assert.equal(viewport.h, 600);
+  assert.ok(Math.abs(viewport.x-16)<1 && Math.abs(viewport.bottom-78)<1, 'phone-sized lower-left viewport');
+  await read(a, `document.getElementById('tower-size').value='1.2';document.getElementById('tower-size').dispatchEvent(new Event('input'));`);
+  assert.equal(await read(a, "document.getElementById('stage').clientWidth"), 432, 'map slider resizes drawing area');
+  assert.equal(await read(a, "Math.round(document.getElementById('stage').width / Math.min(devicePixelRatio,2))"), 432, 'canvas allocation follows map size');
+  await read(a, `document.getElementById('tower-size').value='1';document.getElementById('tower-size').dispatchEvent(new Event('input'));`);
+  await key(a, 'Escape');
+  await until(a, 'window.__qa.state.hidden', 'Escape hides');
+  const hiddenClears = await read(a, 'window.__clears');
+  await wait(300);
+  assert.equal(await read(a, 'window.__clears'), hiddenClears, 'hidden canvas performs no drawing');
+  a.webContents.send('overlay:visibility', true);
+  await until(a, `!window.__qa.state.hidden && window.__clears > ${hiddenClears}`, 'show resumes rendering');
+  console.log('PASS: static/hidden canvas draws=0; map canvas 360x600 instead of 1100x850 (77% fewer pixels).');
 
   // 1) Same salt → byte-identical tower on both peers.
   const platsA = await read(a, 'JSON.stringify(window.__qa.tower().debug().map.platforms)');
@@ -103,6 +123,12 @@ app.whenReady().then(async () => {
   await key(b, 'Tab', 'keyup');
   await until(b, 'document.getElementById("tower-rank").classList.contains("hidden")', 'panel hidden on release');
 
+  await read(a, "document.getElementById('hud-leave').click()");
+  await until(a, "!window.__qa.state.joined && !document.getElementById('join').classList.contains('hidden')", 'leave returns to join');
+  const idleClears = await read(a, 'window.__clears');
+  await wait(200);
+  assert.equal(await read(a, 'window.__clears'), idleClears, 'leaving stops rendering');
+  assert.ok(await read(a, "Math.abs(document.getElementById('stage').clientWidth-innerWidth)<2"), 'normal room restores full stage');
   console.log('PASS: 2-peer tower — identical seed map, climb, in-viewport knockback, live ranking.');
 }).catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => {
   for (const win of windows) win.destroy();

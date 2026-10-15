@@ -55,11 +55,23 @@ app.whenReady().then(async()=>{
     await win.loadURL(`http://127.0.0.1:${server.address().port}/`);
     await until(win,'!!window.__qa?.gameplay() && document.querySelectorAll("#animals .slot").length === 8','ready');
     await read(win,`document.body.style.background='#252936'; document.getElementById('room').value='QA';document.getElementById('nick').value='${i?'Rabbit':'Cat'}';window.__qa.state.selectedAnimal='${i?'rabbit':'cat'}';`);
+    assert.ok(await read(win, "document.getElementById('join').clientWidth<=280 && !document.getElementById('animal-picker').open && !document.getElementById('join-more').open"), 'compact collapsed join panel');
     if(i===0)await capture(win,'qa-version');
     await read(win,`document.getElementById('enter').click()`);
     await until(win,'window.__qa.state.joined','join');
   }
   const [a,b]=windows;
+  assert.equal(await read(a, "JSON.parse(localStorage.getItem('crn.join')).room"), 'QA', 'recent room saved');
+  await read(a, "document.getElementById('hud-toggle').click()");
+  assert.ok(await read(a, "window.__qa.state.menuOpen && document.getElementById('hud-toggle').getAttribute('aria-expanded')==='true'"), 'settings opens');
+  await capture(a,'qa-settings');
+  await read(a, "document.getElementById('hud-more').open=true");
+  await capture(a,'qa-settings-more');
+  await read(a, "window.dispatchEvent(new Event('blur'))");
+  assert.ok(await read(a, "!window.__qa.state.menuOpen && !document.getElementById('hud-more').open"), 'blur closes settings and details');
+  await read(a, "document.getElementById('hud-toggle').click();document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}))");
+  assert.ok(await read(a, "!window.__qa.state.menuOpen"), 'outside click closes settings');
+
   await until(a,'window.__qa.state.world.size===2 && [...window.__qa.state.mesh.peers.values()].every(p=>p.dc?.readyState==="open")','mesh');
   await until(b,'window.__qa.state.world.size===2','other mesh');
   await wait(800);
@@ -92,7 +104,7 @@ app.whenReady().then(async()=>{
   await read(a,'document.getElementById("hud-toggle").click()');await capture(a,'qa-update');
   assert.equal(await read(a,'document.querySelector("[data-update-action]").textContent'),'새 버전 다운로드');
   if (process.platform === 'darwin') {
-    assert.ok(await read(a, 'document.getElementById("hud-hide").title.includes("⌘⌥V")'));
+    assert.ok(await read(a, 'document.getElementById("hud-hide").title.includes("⌘⌥H")'));
     a.webContents.send('updates:state', {version:'0.3.0',status:'available',latestVersion:'0.4.0',manualInstall:true});
     await until(a, 'document.querySelector("[data-update-action]").textContent === "Mac 다운로드 페이지"', 'Mac manual update UI');
   }

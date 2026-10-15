@@ -160,7 +160,7 @@ function createTray() {
   const menu = Menu.buildFromTemplate([
     { label: `ChatRightNow v${app.getVersion()}`, enabled: false },
     { label: '업데이트 확인', click: () => { summon(); updates.check(); } },
-    { label: `Show / Hide (${shortcutLabel}V)`, click: toggleHide },
+    { label: `Show / Hide (${shortcutLabel}H)`, click: toggleHide },
     { label: `Focus overlay (${shortcutLabel}C)`, click: summon },
     { type: 'separator' },
     { label: `Quit ChatRightNow (${shortcutLabel}Q)`, click: () => app.quit() },
@@ -184,7 +184,11 @@ app.whenReady().then(() => {
   pollTimer = setInterval(pollCursor, 45);
   globalShortcut.register('CommandOrControl+Alt+C', summon);
   // Quick hide/show toggle — works even while hidden, so it's the way back.
-  globalShortcut.register('CommandOrControl+Alt+V', toggleHide);
+  for (const key of ['H', 'V']) {
+    if (!globalShortcut.register(`CommandOrControl+Alt+${key}`, toggleHide)) {
+      console.error(`[shortcut] Could not register ${key}; use the tray or Ctrl+Alt+C.`);
+    }
+  }
   // A quit path that always works, regardless of click-through / focus state.
   globalShortcut.register('CommandOrControl+Alt+Q', () => app.quit());
 });

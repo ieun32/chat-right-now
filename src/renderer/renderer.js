@@ -25,20 +25,6 @@ function loadSavedScale() {
 }
 function saveScale(v) { try { localStorage.setItem(SCALE_KEY, String(v)); } catch {} }
 
-// Make sure the bundled pixel font is ready before we draw canvas text with it
-// (the DOM can swap in via font-display, but <canvas> needs it explicitly loaded).
-async function ensureFont() {
-  try {
-    await Promise.race([
-      Promise.all([
-        document.fonts.load('12px "DOSMyungjo"'),
-        document.fonts.load('14px "DOSMyungjo"'),
-      ]),
-      new Promise((r) => setTimeout(r, 3000)),
-    ]);
-  } catch {}
-}
-
 const $ = (id) => document.getElementById(id);
 
 const state = {
@@ -81,16 +67,17 @@ let tower;
   await loadSprites();
   gameplay = createGameplay({ state, recomputeDirection, pushHotspots });
   tower = createTower({ state });
-  await ensureFont();
   loadSavedScale();
+  restoreJoinPreferences();
   buildAnimalPicker();
   wireJoinScreen();
   wireSizeControl();
   wireDock();
+  wireTowerViewport();
   // The join card must be clickable, so grab the mouse until we're in-world.
   pushHotspots();
   window.overlay?.focus();
-  requestAnimationFrame(loop);
+  scheduleFrame();
 })().catch((err) => showJoinError(err.message || String(err)));
 
 // ---------------------------------------------------------------- join UI
@@ -98,7 +85,10 @@ function buildAnimalPicker() {
   const wrap = $('animals');
   wrap.innerHTML = '';
   for (const name of animals()) {
-    const slot = document.createElement('div');
+    const slot = document.createElement('button');
+    slot.type = 'button';
+    slot.setAttribute('aria-label', name);
+    slot.setAttribute('aria-pressed', String(name === state.selectedAnimal));
     slot.className = 'slot' + (name === state.selectedAnimal ? ' sel' : '');
     const c = document.createElement('canvas');
     c.width = 64; c.height = 64;
@@ -109,9 +99,29 @@ function buildAnimalPicker() {
       state.selectedAnimal = name;
       wrap.querySelectorAll('.slot').forEach((s) => s.classList.remove('sel'));
       slot.classList.add('sel');
+      wrap.querySelectorAll('.slot').forEach(s => s.setAttribute('aria-pressed', String(s === slot)));
+      drawPreview($('animal-preview').getContext('2d'), name, 2);
+      $('animal-picker').open = false;
+      $('animal-picker').querySelector('summary').focus();
+      saveJoinPreferences();
     };
     wrap.appendChild(slot);
   }
+  drawPreview($('animal-preview').getContext('2d'), state.selectedAnimal, 2);
+}
+
+function restoreJoinPreferences() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('crn.join') || '{}');
+    if (typeof saved.nick === 'string') $('nick').value = sanitizeNick(saved.nick);
+    if (typeof saved.room === 'string') $('room').value = saved.room.slice(0, 24);
+    if (animals().includes(saved.animal)) state.selectedAnimal = saved.animal;
+  } catch {}
+}
+function saveJoinPreferences() {
+  try { localStorage.setItem('crn.join', JSON.stringify({
+    nick: $('nick').value, room: $('room').value, animal: state.selectedAnimal,
+  })); } catch {}
 }
 
 function randomRoom() {
@@ -121,12 +131,13 @@ function randomRoom() {
 }
 
 function wireJoinScreen() {
-  $('room').value = randomRoom();
-  $('dice').onclick = () => { $('room').value = randomRoom(); };
+  if (!$('room').value) $('room').value = randomRoom();
+  $('dice').onclick = () => { $('room').value = randomRoom(); saveJoinPreferences(); };
+  for (const id of ['nick', 'room']) $(id).addEventListener('change', saveJoinPreferences);
   // Jump-map toggle: the room code becomes the tower seed; reveal its hint.
   $('tower-mode').addEventListener('change', (e) => {
     $('tower-hint').classList.toggle('hidden', !e.target.checked);
-    $('room-label').textContent = e.target.checked ? '방 코드 (맵 시드)' : '방 코드';
+    pushHotspots();
   });
   $('enter').onclick = join;
   $('room').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
@@ -145,6 +156,10 @@ async function leaveRoom() {
   gameplay?.close();
   tower?.stop();
   state.towerMode = false;
+  state.joined = false;
+  cancelAnimationFrame(frameId);
+  frameId = null;
+  updateViewport();
   const mesh = state.mesh;
   state.mesh = null;
   try { await mesh?.stop(); } catch (err) { console.error('[leave]', err); }
@@ -189,11 +204,20 @@ function wireSizeControl() {
 function setMenuOpen(open) {
   state.menuOpen = open;
   $('hud').classList.toggle('open', open);
+  $('hud-toggle').setAttribute('aria-expanded', String(open));
+  if (!open) $('hud-more').open = false;
   pushHotspots();
 }
 
 function wireDock() {
   $('hud-toggle').addEventListener('click', () => setMenuOpen(!state.menuOpen));
+  const observer = new ResizeObserver(pushHotspots);
+  observer.observe($('join'));
+  observer.observe($('hud-menu'));
+  document.addEventListener('pointerdown', e => {
+    if (!e.target.closest('#hud')) setMenuOpen(false);
+    if (!e.target.closest('#animal-picker')) $('animal-picker').open = false;
+  });
 }
 
 function showJoinError(msg) {
@@ -230,6 +254,11 @@ async function join() {
   }
 
   state.joined = true;
+  saveJoinPreferences();
+  $('animal-picker').open = false;
+  $('join-more').open = false;
+  updateViewport();
+  scheduleFrame();
   if (state.towerMode) tower.start(room); // seed the tower from the room code
   $('join').classList.add('hidden');
   $('hud').classList.remove('hidden');
@@ -337,7 +366,7 @@ window.addEventListener('keydown', (e) => {
     if (!e.repeat) hideOverlay();
     return;
   }
-  if (typingInField(e)) return; // never hijack keys meant for a text field
+  if (typingInField(e) || e.target?.closest?.('#hud, #join')) return; // preserve control keyboard navigation
   if (e.ctrlKey || e.altKey || e.metaKey) return;
   if (state.towerMode && state.joined) {
     if (e.key === 'Enter' && !state.chatOpen) { e.preventDefault(); openChat(); return; }
@@ -362,6 +391,9 @@ window.addEventListener('keyup', (e) => {
 });
 // Dropping focus (Alt-Tab away) would strand keys as "held"; clear them.
 window.addEventListener('blur', () => {
+  state.dragging = false;
+  setMenuOpen(false);
+  $('animal-picker').open = false;
   state.sprinting = false;
   state.keys = { left: false, right: false, up: false, down: false };
   tower?.clearInput();
@@ -372,6 +404,8 @@ window.addEventListener('blur', () => {
 window.overlay?.onToggleControl(() => { window.overlay?.focus(); $('stage').focus(); });
 window.overlay?.onVisibility((visible) => {
   state.hidden = !visible;
+  if (visible) scheduleFrame();
+  else { cancelAnimationFrame(frameId); frameId = null; }
   if (!visible) {
     gameplay?.close();
     tower?.clearInput();
@@ -429,12 +463,14 @@ function inflate(r, m) {
   return { x: r.x - m, y: r.y - m, w: r.width + 2 * m, h: r.height + 2 * m };
 }
 function computeHotspots() {
-  // Full-screen interactive while the join card is up, chat is open, or a drag
-  // is in progress (so the slider never slips out from under the cursor).
-  if (!state.joined || state.chatOpen || state.dragging) {
+  // Keep the desktop usable outside the small panel; only dragging captures it.
+  if (state.dragging) {
     return [{ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }];
   }
-  const rects = [inflate($('hud-toggle').getBoundingClientRect(), 12)];
+  if (!state.joined) return [inflate($('join').getBoundingClientRect(), 2)];
+  const rects = [inflate($('hud-toggle').getBoundingClientRect(), 4)];
+  if (state.chatOpen) rects.push(inflate($('chatbar').getBoundingClientRect(), 4));
+  if (state.towerMode) rects.push(inflate($('play-area').getBoundingClientRect(), 3));
   if (state.inventoryOpen) {
     document.querySelectorAll('.weapon-slot').forEach(slot => rects.push(inflate(slot.getBoundingClientRect(), 6)));
   }
@@ -459,7 +495,7 @@ document.addEventListener('mousedown', (e) => {
   state.dragging = true;
   pushHotspots();
   window.overlay?.focus();
-  const onControl = e.target && e.target.closest && e.target.closest('#hud, #chatbar, #join');
+  const onControl = e.target && e.target.closest && e.target.closest('#hud, #chatbar, #join, #tower-size-control');
   if (!onControl && state.joined && !state.chatOpen) $('stage').focus();
 });
 window.addEventListener('mouseup', () => { state.dragging = false; pushHotspots(); });
@@ -469,15 +505,52 @@ const canvas = $('stage');
 const ctx = canvas.getContext('2d');
 let dpr = 1;
 function resize() {
-  dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.round(window.innerWidth * dpr);
-  canvas.height = Math.round(window.innerHeight * dpr);
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const area = $('play-area');
+  canvas.width = Math.round(area.clientWidth * dpr);
+  canvas.height = Math.round(area.clientHeight * dpr);
+}
+function updateViewport() {
+  $('play-area').classList.toggle('tower-view', state.towerMode && state.joined);
+  $('tower-size-control').classList.toggle('hidden', !state.towerMode || !state.joined);
+  state.boxes.clear();
+  resize();
+  pushHotspots();
+}
+function wireTowerViewport() {
+  const area = $('play-area');
+  area.append($('tower-hud'), $('tower-rank'));
+  const slider = $('tower-size');
+  try { slider.value = localStorage.getItem('crn.towerScale') || '1'; } catch {}
+  const apply = () => {
+    area.style.setProperty('--tower-scale', slider.value);
+    resize();
+    pushHotspots();
+  };
+  slider.addEventListener('input', () => {
+    apply();
+    try { localStorage.setItem('crn.towerScale', slider.value); } catch {}
+  });
+  apply();
 }
 window.addEventListener('resize', () => { resize(); pushHotspots(); });
 resize();
 
+// No canvas work on the static join screen or while hidden. Networking remains
+// connected; showing/joining explicitly wakes rendering without duplicate loops.
+let frameId = null;
+let lastFrame = 0;
+function scheduleFrame() {
+  if (frameId === null && state.joined && !state.hidden) frameId = requestAnimationFrame(loop);
+}
 let lastHotspotPush = 0;
-function loop() {
+function loop(timestamp) {
+  frameId = null;
+  if (!state.joined || state.hidden) return;
+  scheduleFrame();
+  // High-refresh monitors must not multiply canvas/compositor work.
+  if (timestamp - lastFrame < 1000 / 60 - 0.5) return;
+  lastFrame = timestamp;
   const now = Date.now();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   for (const actor of state.world.values()) pruneBubbles(actor, now);
@@ -497,5 +570,4 @@ function loop() {
     // Republish character hotspots as they move (throttled; deduped downstream).
     if (now - lastHotspotPush > 80) { lastHotspotPush = now; pushHotspots(); }
   }
-  requestAnimationFrame(loop);
 }

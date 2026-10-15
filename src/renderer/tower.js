@@ -12,7 +12,7 @@ import { WEAPONS } from '../shared/combat.js';
 import {
   TOWER, generateTower, makeClimber, stepTower, towerHit, applyKnockback, ranking, clamp,
 } from '../shared/tower.js';
-import { drawActor, drawTile, drawWeaponFx, weaponFxRow, TILE } from './render.js';
+import { drawActor, drawWeaponFx } from './render.js';
 
 const VIEW_H = 1.5; // screen-heights of the tower visible at once (vertical zoom-out)
 const BROADCAST_MS = 90; // climber snapshot cadence
@@ -77,7 +77,12 @@ export function createTower({ state }) {
     if ([' ', 'arrowup', 'w'].includes(k)) { input.jump = false; return true; }
     return false;
   }
-  function clearInput() { input.left = input.right = input.jump = false; }
+  function clearInput() {
+    input.left = input.right = input.jump = false;
+    rankHeld = false;
+    rankPanel.classList.add('hidden');
+    lastTick = performance.now();
+  }
 
   function equip(weapon) {
     if (!weapon || !state.local) return;
@@ -138,7 +143,7 @@ export function createTower({ state }) {
   }
   function screenYOf(h, c) { return c.anchorPx - (h - c.lh) * c.unit; }
   function onScreen(h) {
-    const cssH = window.innerHeight;
+    const cssH = document.getElementById('play-area').clientHeight;
     const y = screenYOf(h, cam(cssH));
     return y >= -cssH * 0.15 && y <= cssH * 1.15;
   }
@@ -177,29 +182,24 @@ export function createTower({ state }) {
     if (rankHeld) refreshRank();
   }
 
-  function drawPlatforms(ctx, c, cssW, cssH, dpr, now) {
-    const size = 24; // on-screen tile size (px)
+  function drawPlatforms(ctx, c, cssW, cssH, dpr) {
+    ctx.save();
+    ctx.scale(dpr, dpr);
     for (const p of map.platforms) {
       const y = screenYOf(p.h, c);
-      if (y < -size || y > cssH + size) continue;
-      const top = y - size; // platform top surface sits at p.h
-      if (p.ground) {
-        for (let x = 0; x < cssW; x += size) drawTile(ctx, TILE.ground, x, top, size, size, dpr);
-        continue;
+      if (y < 0 || y > cssH) continue;
+      const left = p.ground ? 0 : (p.x - p.w / 2) * cssW;
+      const width = p.ground ? cssW : p.w * cssW;
+      ctx.fillStyle = p.goal ? '#a5b5ab' : '#899397';
+      // The top of the line is the collision surface, including the ground.
+      ctx.fillRect(Math.round(left), Math.round(y), Math.round(width), 2);
+      if (p.goal) {
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('TOP', p.x * cssW, y - 5);
       }
-      const leftPx = (p.x - p.w / 2) * cssW;
-      const rightPx = (p.x + p.w / 2) * cssW;
-      const n = Math.max(1, Math.round((rightPx - leftPx) / size));
-      if (n === 1) { drawTile(ctx, TILE.single, leftPx, top, rightPx - leftPx, size, dpr); }
-      else {
-        const tw = (rightPx - leftPx) / n;
-        for (let i = 0; i < n; i++) {
-          const col = i === 0 ? TILE.leftCap : i === n - 1 ? TILE.rightCap : TILE.middle;
-          drawTile(ctx, col, leftPx + i * tw, top, tw + 0.5, size, dpr);
-        }
-      }
-      if (p.goal) drawTile(ctx, TILE.goal, (p.x) * cssW - size / 2, top - size, size, size, dpr);
     }
+    ctx.restore();
   }
 
   function drawClimbers(ctx, c, canvasW, canvasH, cssW, cssH, dpr, now, nowP) {
@@ -229,26 +229,26 @@ export function createTower({ state }) {
       e.actor.facing = e.facing;
       const anim = !e.grounded ? 'jump' : Math.abs(e.vx) > 0.02 ? 'walk' : 'idle';
       const phase = e.vy > 0.02 ? 0 : 2;
-      drawActor(ctx, e.actor, canvasW, canvasH, dpr, now, { feetX, feetY, anim, phase });
-      drawAttackFx(ctx, e, feetX, feetY, dpr);
+      drawActor(ctx, e.actor, canvasW, canvasH, dpr, now, { feetX, feetY, anim, phase, scale: 0.6 });
+      drawAttackFx(ctx, e, feetX, feetY, dpr, cssW);
     }
   }
 
-  function drawAttackFx(ctx, e, feetX, feetY, dpr) {
+  function drawAttackFx(ctx, e, feetX, feetY, dpr, cssW) {
     const fx = e.fx;
     if (!fx) return;
     const w = WEAPONS[fx.weapon];
     const age = Date.now() - fx.at;
     if (age < 0 || age >= w.duration) return;
     const t = age / w.duration;
-    const cy = feetY - 34;
-    const reach = w.range * (window.innerWidth) * 0.5; // approx screen reach
+    const cy = feetY - 20;
+    const reach = w.range * cssW * 0.5; // approx screen reach
     const col = Math.floor(t * 6) % 6;
     if (fx.weapon === 'gun') {
-      drawWeaponFx(ctx, w.row, col, feetX + fx.facing * (18 + reach * 2 * t), cy, 30, 30, dpr, fx.facing);
+      drawWeaponFx(ctx, w.row, col, feetX + fx.facing * (10 + reach * 2 * t), cy, 18, 18, dpr, fx.facing);
     } else {
-      const ww = w.range * window.innerWidth;
-      drawWeaponFx(ctx, w.row, col, feetX + fx.facing * ww * 0.5, cy, ww, fx.weapon === 'flame' ? 52 : 44, dpr, fx.facing);
+      const ww = w.range * cssW;
+      drawWeaponFx(ctx, w.row, col, feetX + fx.facing * ww * 0.5, cy, ww, fx.weapon === 'flame' ? 31 : 26, dpr, fx.facing);
     }
   }
 
@@ -257,8 +257,10 @@ export function createTower({ state }) {
 
   function updateHud() {
     if (!self) return;
-    hudFloor.textContent = `${floorOf(self.maxH)}층`;
-    if (hudWeapon && state.local) hudWeapon.textContent = WEAPONS[state.local.weapon || 'club'].name;
+    const floor = `${floorOf(self.maxH)}층`;
+    if (hudFloor.textContent !== floor) hudFloor.textContent = floor;
+    const weapon = WEAPONS[state.local?.weapon || 'club'].name;
+    if (hudWeapon && hudWeapon.textContent !== weapon) hudWeapon.textContent = weapon;
   }
 
   function climberRows() {
@@ -278,7 +280,7 @@ export function createTower({ state }) {
     const row = (r) => `<li class="${r.isLocal ? 'me' : ''}"><span class="rk">${r.rank}</span><span class="nm">${escapeHtml(r.nick)}</span><span class="ht">${floorOf(r.maxH)}층</span></li>`;
     let html = top.map(row).join('');
     if (me) html += `<li class="sep" aria-hidden="true">⋯</li>` + row(me);
-    rankList.innerHTML = html;
+    if (rankList.innerHTML !== html) rankList.innerHTML = html;
     document.getElementById('tower-rank-total').textContent = `${total}명 등반 중`;
   }
 
